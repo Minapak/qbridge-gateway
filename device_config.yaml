@@ -1,0 +1,53 @@
+# SwiftQuantum Gateway Agent — Device Configuration
+# ===================================================
+# Edit this file to configure your quantum hardware gateway.
+
+server:
+  name: "researcher_gateway"
+  id: "gw_001"
+  host: "0.0.0.0"
+  port: 8765
+  cors_origins:
+    - "*"
+
+device:
+  name: "local_simulator"
+  num_qubits: 20
+  technology: "simulator"
+  connectivity: "full"
+  supported_gates:
+    - h
+    - x
+    - y
+    - z
+    - cx
+    - cnot
+    - rx
+    - ry
+    - rz
+    - s
+    - sdg
+    - t
+    - tdg
+    - swap
+    - cz
+    - ccx
+    - id
+    - measure
+  max_shots: 1000000
+
+# Authentication (optional)
+auth:
+  enabled: false
+  token: "${GATEWAY_AUTH_TOKEN}"
+
+# Registration with SwiftQuantum Cloud (optional)
+registration:
+  auto_register: false
+  swiftquantum_url: "https://api.swiftquantum.com"
+  api_key: "${SWIFTQUANTUM_API_KEY}"
+
+# Logging
+logging:
+  level: "INFO"
+  format: "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
