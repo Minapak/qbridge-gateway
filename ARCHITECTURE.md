@@ -1,6 +1,6 @@
 # Gateway Agent Architecture
 
-**Version:** 1.0.0 | **Last Updated:** 2026-02-10
+**Version:** 1.1.0 | **Last Updated:** 2026-02-11
 
 ## Overview
 
@@ -38,6 +38,24 @@ The Gateway Agent is a gRPC-based device gateway that bridges the SwiftQuantum e
 |   IBM    |   IonQ   | Rigetti  |Quantinuum |  Custom Lab    |
 +----------+----------+----------+-----------+----------------+
 ```
+
+## QEC Delegation Flow (v8.1.0)
+
+```
+┌──────────┐  HTTPS   ┌──────────────────┐  HTTP   ┌──────────────────┐
+│ iOS App  │ ────────▶│ Fargate Backend  │ ───────▶│  Gateway Agent   │
+│(Q-Bridge)│          │ (routing layer)  │         │  (computation)   │
+└──────────┘          └──────────────────┘         │                  │
+                                                   │ /qec/simulate    │
+                                                   │ /qec/decode      │
+                                                   │ /qec/bb-decoder  │
+                                                   └──────────────────┘
+```
+
+Gateway Agent serves as the computation engine for:
+- **QEC Simulation**: Surface/color code simulation with MWPM, Union-Find, Lookup decoders
+- **Syndrome Decoding**: Single syndrome measurement analysis with correction proposals
+- **BB Code Decoding**: Bivariate bicycle code qLDPC decoder (4 code families)
 
 ## API Endpoints
 

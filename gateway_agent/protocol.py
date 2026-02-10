@@ -59,6 +59,14 @@ class MessageType(Enum):
     STREAM_RESULTS = "stream_results"
     STREAM_CHUNK = "stream_chunk"
 
+    # QEC Delegation (v8.1.0)
+    QEC_SIMULATE = "qec_simulate"
+    QEC_SIMULATE_RESULT = "qec_simulate_result"
+    QEC_DECODE_SYNDROME = "qec_decode_syndrome"
+    QEC_DECODE_RESULT = "qec_decode_result"
+    BB_DECODER = "bb_decoder"
+    BB_DECODER_RESULT = "bb_decoder_result"
+
 
 @dataclass
 class GatewayMessage:

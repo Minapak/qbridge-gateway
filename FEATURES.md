@@ -1,6 +1,6 @@
 # Gateway Agent Features
 
-**Version:** 1.0.0 | **Last Updated:** 2026-02-10
+**Version:** 1.1.0 | **Last Updated:** 2026-02-11
 
 ## Core Features
 
@@ -25,6 +25,13 @@
 - Dynamic device discovery
 - Hot-reload configuration support
 
+### QEC Delegation (v8.1.0)
+- QEC simulation: Surface/color code with MWPM, Union-Find, Lookup decoders
+- Syndrome decoding: Single syndrome measurement analysis with correction proposals
+- BB Code decoding: Bivariate bicycle qLDPC decoder (4 code families)
+- 6 new protocol MessageTypes for WebSocket QEC communication
+- Automatic computation delegation from Fargate backend
+
 ## API Reference
 
 | Endpoint | Method | Description | Auth Required |
@@ -33,6 +40,9 @@
 | `/gateway/backends` | GET | List backends | Yes |
 | `/gateway/execute` | POST | Execute job | Yes |
 | `/gateway/submit` | POST | Submit job | Yes |
+| `/gateway/qec/simulate` | POST | QEC simulation | Yes |
+| `/gateway/qec/decode-syndrome` | POST | Syndrome decoding | Yes |
+| `/gateway/qec/bb-decoder` | POST | BB Code decoder | Yes |
 
 ## Supported Providers
 

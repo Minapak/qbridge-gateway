@@ -7,7 +7,7 @@ Self-hosted quantum hardware gateway for researchers. The Gateway Agent is a sta
 The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum platform. Researchers run this agent alongside their quantum hardware, and the agent handles circuit execution, transpilation, job management, and health monitoring through a uniform API surface.
 
 **Key Features:**
-- 7 REST API endpoints conforming to the SwiftQuantum Gateway Protocol
+- 10 REST API endpoints conforming to the SwiftQuantum Gateway Protocol (including QEC delegation)
 - Pluggable `DeviceInterface` for connecting any quantum hardware
 - Built-in `LocalSimulator` for testing and development
 - YAML/JSON configuration with `${ENV_VAR}` placeholder resolution
@@ -87,7 +87,7 @@ curl http://localhost:8765/gateway/health
 
 ## Endpoint Documentation
 
-The Gateway Agent exposes 7 REST API endpoints under the `/gateway/` prefix:
+The Gateway Agent exposes 10 REST API endpoints under the `/gateway/` prefix:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -98,6 +98,9 @@ The Gateway Agent exposes 7 REST API endpoints under the `/gateway/` prefix:
 | `/gateway/job/{job_id}` | GET | Get job status and results by job ID |
 | `/gateway/providers` | GET | List provider information (type, technology, backends) |
 | `/gateway/message` | POST | Handle generic gateway protocol messages |
+| `/gateway/qec/simulate` | POST | Full QEC simulation (surface/color codes, MWPM/Union-Find/Lookup decoders) |
+| `/gateway/qec/decode-syndrome` | POST | Single syndrome measurement decoding |
+| `/gateway/qec/bb-decoder` | POST | BB Code qLDPC decoder (4 families: bb_72_12_6, bb_90_8_10, bb_144_12_12, bb_288_12_18) |
 
 ### POST /gateway/execute
 
