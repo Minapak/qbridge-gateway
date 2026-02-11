@@ -128,6 +128,12 @@ class GatewayServer:
             else:
                 logger.warning(f"Unknown config format: {path.suffix}")
 
+            # Ensure config is a dict (malformed files may parse to str or other types)
+            if not isinstance(self.config, dict):
+                logger.warning(f"Config file did not parse to a dict: {config_path}")
+                self.config = {}
+                return
+
             # Resolve environment variables
             self._resolve_env_vars(self.config)
             logger.info(f"Loaded config from {config_path}")
