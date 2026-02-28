@@ -1,6 +1,6 @@
 # Gateway Agent Architecture
 
-**Version:** 1.1.0 | **Last Updated:** 2026-02-11
+**Version:** 1.2.0 | **Last Updated:** 2026-02-28
 
 ## Overview
 
@@ -23,7 +23,7 @@ The Gateway Agent is a gRPC-based device gateway that bridges the SwiftQuantum e
 |                                                              |
 |  +------------------------------------------------------+    |
 |  |              Device Configuration                     |    |
-|  |  - YAML-based config (device_config.yaml)             |    |
+|  |  - JSON/YAML config (config.json or device_config.yaml)|    |
 |  |  - Provider type, endpoint, auth token                |    |
 |  |  - Protocol (REST/gRPC/Qiskit Runtime)                |    |
 |  |  - Qubit count, native gate set, topology             |    |

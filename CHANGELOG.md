@@ -1,6 +1,23 @@
 # Changelog
 
-All notable changes to Gateway Agent will be documented in this file.
+All notable changes to Q-Bridge Gateway Agent will be documented in this file.
+
+## [1.2.0] - 2026-02-28
+
+### Changed — iOS App Alignment
+- **Package rename**: `swiftquantum-gateway-agent` → `qbridge-gateway`
+- **CLI rename**: `gateway-agent` → `qbridge-gateway`
+- **Default port**: 8765 → 8090 (matches Q-Bridge iOS QBGatewaySetupView)
+- **Default config**: `device_config.yaml` → `config.json`
+- **FastAPI title**: `SwiftQuantum Gateway Agent` → `Q-Bridge Gateway Agent`
+
+### Added
+- `qbridge-gateway init` subcommand — generates `config.json` template
+- `Dockerfile` — builds `qbridge/gateway:latest` image
+- `.dockerignore` — standard Python Docker ignore rules
+- `config.json` — default JSON config template
+
+---
 
 ## [1.1.0] - 2026-02-11
 

@@ -15,8 +15,8 @@ Endpoints:
     POST /gateway/message       - Generic protocol message
 
 Usage:
-    server = GatewayServer(config_path="device_config.yaml")
-    server.start(host="0.0.0.0", port=8765)
+    server = GatewayServer(config_path="config.json")
+    server.start(host="0.0.0.0", port=8090)
 """
 
 import json
@@ -153,8 +153,8 @@ class GatewayServer:
     def _create_app(self) -> "FastAPI":
         """Create FastAPI application with all gateway endpoints."""
         app = FastAPI(
-            title="SwiftQuantum Gateway Agent",
-            version="1.0.0",
+            title="Q-Bridge Gateway Agent",
+            version="1.2.0",
             description="Researcher-hosted quantum hardware gateway",
         )
 
@@ -610,7 +610,7 @@ class GatewayServer:
 
         return app
 
-    def start(self, host: str = "0.0.0.0", port: int = 8765,
+    def start(self, host: str = "0.0.0.0", port: int = 8090,
               reload: bool = False) -> None:
         """Start the gateway server."""
         if not FASTAPI_AVAILABLE:

@@ -1,0 +1,34 @@
+{
+  "server": {
+    "name": "my-gateway",
+    "id": "gw_001",
+    "host": "0.0.0.0",
+    "port": 8090,
+    "cors_origins": ["*"]
+  },
+  "device": {
+    "name": "local_simulator",
+    "num_qubits": 20,
+    "technology": "simulator",
+    "connectivity": "full",
+    "supported_gates": [
+      "h", "x", "y", "z", "cx", "cnot",
+      "rx", "ry", "rz",
+      "s", "sdg", "t", "tdg",
+      "swap", "cz", "ccx", "id", "measure"
+    ],
+    "max_shots": 1000000
+  },
+  "auth": {
+    "enabled": false,
+    "token": ""
+  },
+  "registration": {
+    "auto_register": false,
+    "swiftquantum_url": "https://api.swiftquantum.tech",
+    "api_key": ""
+  },
+  "logging": {
+    "level": "INFO"
+  }
+}

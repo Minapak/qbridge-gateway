@@ -1,19 +1,21 @@
 """
-Gateway Agent CLI
-==================
+Q-Bridge Gateway Agent CLI
+============================
 
-Command-line interface for managing the SwiftQuantum Gateway Agent.
+Command-line interface for managing the Q-Bridge Gateway Agent.
 
 Usage:
-    gateway-agent start                     # Start with defaults
-    gateway-agent start --config config.yaml --port 8765
-    gateway-agent status                    # Check server status
-    gateway-agent register --url https://swiftquantum.com/api
+    qbridge-gateway start                     # Start with defaults
+    qbridge-gateway start --config config.json --port 8090
+    qbridge-gateway init --config=config.json # Generate config file
+    qbridge-gateway status                    # Check server status
+    qbridge-gateway register --url https://api.swiftquantum.tech
 """
 
 import argparse
 import json
 import logging
+import os
 import sys
 from typing import Optional
 
@@ -23,18 +25,31 @@ logger = logging.getLogger(__name__)
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        prog="gateway-agent",
-        description="SwiftQuantum Gateway Agent — Self-hosted quantum hardware gateway",
+        prog="qbridge-gateway",
+        description="Q-Bridge Gateway Agent — Self-hosted quantum hardware gateway",
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # ─── init command ───
+    init_parser = subparsers.add_parser("init", help="Generate a config file template")
+    init_parser.add_argument(
+        "--config", "-c",
+        default="config.json",
+        help="Path to write the config file (default: config.json)",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing config file without prompting",
+    )
 
     # ─── start command ───
     start_parser = subparsers.add_parser("start", help="Start the gateway agent server")
     start_parser.add_argument(
         "--config", "-c",
-        default="device_config.yaml",
-        help="Path to device configuration file (YAML or JSON)",
+        default="config.json",
+        help="Path to device configuration file (JSON or YAML)",
     )
     start_parser.add_argument(
         "--host",
@@ -44,8 +59,8 @@ def main():
     start_parser.add_argument(
         "--port", "-p",
         type=int,
-        default=8765,
-        help="Port to listen on (default: 8765)",
+        default=8090,
+        help="Port to listen on (default: 8090)",
     )
     start_parser.add_argument(
         "--reload",
@@ -63,7 +78,7 @@ def main():
     status_parser = subparsers.add_parser("status", help="Check gateway agent status")
     status_parser.add_argument(
         "--url",
-        default="http://localhost:8765",
+        default="http://localhost:8090",
         help="Gateway agent URL",
     )
 
@@ -83,7 +98,7 @@ def main():
     )
     register_parser.add_argument(
         "--config", "-c",
-        default="device_config.yaml",
+        default="config.json",
         help="Device config file path",
     )
 
@@ -101,7 +116,9 @@ def main():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    if args.command == "start":
+    if args.command == "init":
+        cmd_init(args)
+    elif args.command == "start":
         cmd_start(args)
     elif args.command == "status":
         cmd_status(args)
@@ -109,12 +126,66 @@ def main():
         cmd_register(args)
 
 
+def cmd_init(args):
+    """Generate a config file template."""
+    config_path = args.config
+
+    if os.path.exists(config_path) and not getattr(args, "force", False):
+        if sys.stdin.isatty():
+            response = input(f"File '{config_path}' already exists. Overwrite? [y/N]: ")
+            if response.lower() not in ("y", "yes"):
+                print("Aborted.")
+                return
+        else:
+            print(f"File '{config_path}' already exists. Use --force to overwrite.")
+            return
+
+    template = {
+        "server": {
+            "name": "my-gateway",
+            "id": "gw_001",
+            "host": "0.0.0.0",
+            "port": 8090,
+        },
+        "device": {
+            "name": "local_simulator",
+            "num_qubits": 20,
+            "technology": "simulator",
+            "connectivity": "full",
+            "supported_gates": [
+                "h", "x", "y", "z", "cx", "rx", "ry", "rz",
+                "s", "t", "swap", "cz", "ccx", "id", "measure",
+            ],
+            "max_shots": 1000000,
+        },
+        "auth": {
+            "enabled": False,
+            "token": "",
+        },
+        "registration": {
+            "auto_register": False,
+            "swiftquantum_url": "https://api.swiftquantum.tech",
+            "api_key": "",
+        },
+    }
+
+    with open(config_path, "w") as f:
+        json.dump(template, f, indent=2)
+        f.write("\n")
+
+    print(f"Config file created: {config_path}")
+    print()
+    print("Next steps:")
+    print(f"  1. Edit {config_path} to match your hardware")
+    print(f"  2. Run: qbridge-gateway start --config={config_path}")
+
+
 def cmd_start(args):
     """Start the gateway agent server."""
     from .server import GatewayServer
 
     print("=" * 60)
-    print("  SwiftQuantum Gateway Agent v1.0.0")
+    print("  Q-Bridge Gateway Agent v1.2.0")
     print("=" * 60)
     print(f"  Config:  {args.config}")
     print(f"  Host:    {args.host}")

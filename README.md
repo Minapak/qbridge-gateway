@@ -1,4 +1,4 @@
-# SwiftQuantum Gateway Agent
+# Q-Bridge Gateway Agent
 
 Self-hosted quantum hardware gateway for researchers. The Gateway Agent is a standalone FastAPI server that implements the SwiftQuantum Gateway Protocol, allowing researchers to expose their quantum hardware (or simulators) to the SwiftQuantum ecosystem through a standardized REST API.
 
@@ -10,8 +10,9 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 - 10 REST API endpoints conforming to the SwiftQuantum Gateway Protocol (including QEC delegation)
 - Pluggable `DeviceInterface` for connecting any quantum hardware
 - Built-in `LocalSimulator` for testing and development
-- YAML/JSON configuration with `${ENV_VAR}` placeholder resolution
+- JSON/YAML configuration with `${ENV_VAR}` placeholder resolution
 - CLI tool for server management, status checking, and cloud registration
+- Docker support for containerized deployment
 - CORS support for cross-origin access
 
 ---
@@ -22,65 +23,77 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 
 ```bash
 # From PyPI
-pip install swiftquantum-gateway-agent
+pip install qbridge-gateway
 
 # From source
-git clone https://github.com/SwiftQuantum/gateway-agent.git
+git clone https://github.com/Minapak/gateway-agent.git
 cd gateway-agent
 pip install -e .
 ```
 
+### Initialize Config
+
+```bash
+qbridge-gateway init --config=config.json
+```
+
 ### Configure
 
-Edit `device_config.yaml` to match your hardware setup:
+Edit `config.json` to match your hardware setup:
 
-```yaml
-server:
-  name: "my_lab_gateway"
-  id: "gw_001"
-  host: "0.0.0.0"
-  port: 8765
-
-device:
-  name: "my_qpu"
-  num_qubits: 20
-  technology: "superconducting"
-  connectivity: "grid"
-  supported_gates:
-    - h
-    - cx
-    - rx
-    - ry
-    - rz
-    - x
-    - y
-    - z
-    - measure
-  max_shots: 100000
+```json
+{
+  "server": {
+    "name": "my_lab_gateway",
+    "id": "gw_001",
+    "host": "0.0.0.0",
+    "port": 8090
+  },
+  "device": {
+    "name": "my_qpu",
+    "num_qubits": 20,
+    "technology": "superconducting",
+    "connectivity": "grid",
+    "supported_gates": ["h", "cx", "rx", "ry", "rz", "x", "y", "z", "measure"],
+    "max_shots": 100000
+  }
+}
 ```
 
 ### Run
 
 ```bash
 # Using the CLI
-gateway-agent start --config device_config.yaml --port 8765
+qbridge-gateway start --config=config.json
 
 # Using Python directly
 python -c "
 from gateway_agent.server import GatewayServer
-server = GatewayServer(config_path='device_config.yaml')
-server.start(host='0.0.0.0', port=8765)
+server = GatewayServer(config_path='config.json')
+server.start(host='0.0.0.0', port=8090)
 "
+```
+
+### Docker
+
+```bash
+# Build
+docker build -t qbridge/gateway:latest .
+
+# Run
+docker run -d -p 8090:8090 \
+  -v ./config.json:/app/config.json \
+  qbridge/gateway:latest
 ```
 
 ### Verify
 
 ```bash
 # Check server health
-gateway-agent status --url http://localhost:8765
+qbridge-gateway status --url http://localhost:8090
 
 # Or with curl
-curl http://localhost:8765/gateway/health
+curl http://localhost:8090/gateway/health
 ```
 
 ---
@@ -139,204 +152,93 @@ Execute a quantum circuit.
 }
 ```
 
-### POST /gateway/transpile
-
-Transpile a circuit for the device's native gate set.
-
-**Request Body:**
-```json
-{
-  "circuit": {
-    "num_qubits": 2,
-    "gates": [{"gate": "h", "qubits": [0]}]
-  },
-  "backend": "",
-  "optimization_level": 1
-}
-```
-
-### POST /gateway/message
-
-Handle a generic gateway protocol message (envelope format).
-
-**Request Body:**
-```json
-{
-  "type": "execute_circuit",
-  "payload": {
-    "circuit": {"num_qubits": 2, "gates": [...]},
-    "shots": 1024
-  },
-  "version": "1.0",
-  "source": "swiftquantum_backend",
-  "target": "researcher_lab",
-  "correlation_id": "uuid"
-}
-```
-
-**Supported Message Types:**
-- `health_check` -- Returns health status
-- `list_backends` -- Returns backend information
-- `execute_circuit` -- Executes circuit and returns results
-
 ---
 
-## Configuration Reference (`device_config.yaml`)
+## Configuration Reference
 
-```yaml
-# Server settings
-server:
-  name: "researcher_gateway"     # Server display name
-  id: "gw_001"                   # Unique server identifier
-  host: "0.0.0.0"               # Bind address
-  port: 8765                     # Listen port
-  cors_origins:                  # Allowed CORS origins
-    - "*"
+The gateway supports both JSON (`config.json`) and YAML (`device_config.yaml`) configuration files.
 
-# Device hardware settings
-device:
-  name: "local_simulator"       # Device/backend name
-  num_qubits: 20                # Number of qubits
-  technology: "simulator"       # Technology type (simulator, superconducting, trapped_ion, etc.)
-  connectivity: "full"          # Connectivity topology (full, grid, heavy_hex, linear, etc.)
-  supported_gates:              # List of supported gate types
-    - h
-    - x
-    - y
-    - z
-    - cx
-    - rx
-    - ry
-    - rz
-    - measure
-  max_shots: 1000000            # Maximum shots per execution
-
-# Authentication (optional)
-auth:
-  enabled: false                # Enable token authentication
-  token: "${GATEWAY_AUTH_TOKEN}" # Auth token (resolved from environment)
-
-# Cloud registration (optional)
-registration:
-  auto_register: false          # Auto-register with SwiftQuantum cloud on startup
-  swiftquantum_url: "https://api.swiftquantum.com"
-  api_key: "${SWIFTQUANTUM_API_KEY}"
-
-# Logging
-logging:
-  level: "INFO"                 # DEBUG, INFO, WARNING, ERROR
-  format: "%(asctime)s [%(name)s] %(levelname)s: %(message)s"
+```json
+{
+  "server": {
+    "name": "researcher_gateway",
+    "id": "gw_001",
+    "host": "0.0.0.0",
+    "port": 8090,
+    "cors_origins": ["*"]
+  },
+  "device": {
+    "name": "local_simulator",
+    "num_qubits": 20,
+    "technology": "simulator",
+    "connectivity": "full",
+    "supported_gates": ["h", "x", "y", "z", "cx", "rx", "ry", "rz", "measure"],
+    "max_shots": 1000000
+  },
+  "auth": {
+    "enabled": false,
+    "token": "${GATEWAY_AUTH_TOKEN}"
+  },
+  "registration": {
+    "auto_register": false,
+    "swiftquantum_url": "https://api.swiftquantum.tech",
+    "api_key": "${SWIFTQUANTUM_API_KEY}"
+  }
+}
 ```
 
 **Environment Variable Resolution:** Any value in the format `${ENV_VAR}` is automatically resolved from the corresponding environment variable at startup.
 
 ---
 
-## Custom Device Interface Implementation Guide
+## Custom Device Interface
 
-To connect your own quantum hardware to the Gateway Agent, implement the `DeviceInterface` abstract base class.
-
-### Step 1: Create your device class
+To connect your own quantum hardware, implement the `DeviceInterface` abstract base class:
 
 ```python
 from gateway_agent.device_interface import DeviceInterface, DeviceInfo, ExecutionResult
 
 class MyLabDevice(DeviceInterface):
-    """Custom device interface for my lab's quantum hardware."""
-
-    def __init__(self, hardware_url: str):
-        self.hardware_url = hardware_url
-
     def get_device_info(self) -> DeviceInfo:
-        """Return device hardware information."""
         return DeviceInfo(
-            name="my_lab_qpu",
-            num_qubits=5,
-            technology="superconducting",
-            connectivity="linear",
-            supported_gates=["h", "cx", "rx", "ry", "rz", "x", "z", "measure"],
+            name="my_lab_qpu", num_qubits=5,
+            technology="superconducting", connectivity="linear",
+            supported_gates=["h", "cx", "rx", "ry", "rz", "measure"],
             max_shots=10000,
-            status="online",
-            metadata={"lab": "Quantum Physics Lab", "version": "2.0"},
         )
 
     def execute(self, circuit, shots, options=None):
-        """Execute a quantum circuit on your hardware."""
-        import time, hashlib
-
-        start = time.time()
-        job_id = f"lab_{hashlib.md5(str(time.time()).encode()).hexdigest()[:8]}"
-
-        # --- Replace this with your actual hardware execution ---
-        # result_counts = my_hardware_api.run(circuit, shots)
-        result_counts = {"00": shots // 2, "11": shots // 2}  # placeholder
-        # --------------------------------------------------------
-
-        elapsed = (time.time() - start) * 1000
-        return ExecutionResult(
-            job_id=job_id,
-            counts=result_counts,
-            shots=shots,
-            execution_time_ms=elapsed,
-            success=True,
-            metadata={"device": "my_lab_qpu"},
-        )
+        # Connect to your hardware here
+        return ExecutionResult(job_id="lab_001", counts={"00": 512, "11": 512},
+                               shots=shots, execution_time_ms=2.3, success=True)
 
     def get_status(self):
-        """Return current device status."""
-        return {
-            "status": "online",
-            "device": "my_lab_qpu",
-            "type": "superconducting",
-            "num_qubits": 5,
-        }
-
-    def transpile(self, circuit, optimization_level=1):
-        """Optional: transpile circuit to device-native gates."""
-        # Implement device-specific transpilation here
-        return circuit
-
-    def validate_circuit(self, circuit):
-        """Optional: add custom validation rules."""
-        errors = super().validate_circuit(circuit)
-        # Add your own validation
-        return errors
+        return {"status": "online", "device": "my_lab_qpu", "num_qubits": 5}
 ```
-
-### Step 2: Use your device with the server
 
 ```python
 from gateway_agent.server import GatewayServer
-from my_device import MyLabDevice
-
-device = MyLabDevice(hardware_url="http://my-hardware:9000")
-server = GatewayServer(config_path="device_config.yaml", device=device)
-server.start(host="0.0.0.0", port=8765)
+device = MyLabDevice()
+server = GatewayServer(config_path="config.json", device=device)
+server.start(host="0.0.0.0", port=8090)
 ```
-
-### DeviceInterface Methods
-
-| Method | Required | Description |
-|--------|----------|-------------|
-| `get_device_info()` | Yes | Return `DeviceInfo` with hardware specifications |
-| `execute(circuit, shots, options)` | Yes | Execute circuit and return `ExecutionResult` |
-| `get_status()` | Yes | Return current device status dictionary |
-| `transpile(circuit, optimization_level)` | No | Transpile circuit to native gates (default: passthrough) |
-| `validate_circuit(circuit)` | No | Validate circuit constraints (default: qubit count + gate support) |
 
 ---
 
 ## CLI Reference
 
 ```bash
+# Generate config file
+qbridge-gateway init [--config PATH] [--force]
+
 # Start the gateway server
-gateway-agent start [--config PATH] [--host HOST] [--port PORT] [--reload] [--log-level LEVEL]
+qbridge-gateway start [--config PATH] [--host HOST] [--port PORT] [--reload] [--log-level LEVEL]
 
 # Check server status
-gateway-agent status [--url URL]
+qbridge-gateway status [--url URL]
 
 # Register with SwiftQuantum cloud
-gateway-agent register --url API_URL [--token TOKEN] [--config PATH]
+qbridge-gateway register --url API_URL [--token TOKEN] [--config PATH]
 ```
 
 ---
@@ -357,4 +259,3 @@ gateway-agent register --url API_URL [--token TOKEN] [--config PATH]
 ## License
 
 MIT License
-# gateway-agent

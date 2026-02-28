@@ -1,4 +1,4 @@
-# SwiftQuantum Gateway Agent — Device Configuration
+# Q-Bridge Gateway Agent — Device Configuration
 # ===================================================
 # Edit this file to configure your quantum hardware gateway.
 
@@ -6,7 +6,7 @@ server:
   name: "researcher_gateway"
   id: "gw_001"
   host: "0.0.0.0"
-  port: 8765
+  port: 8090
   cors_origins:
     - "*"
 

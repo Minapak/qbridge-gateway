@@ -3,8 +3,9 @@ Tests for gateway_agent.cli — Command-line interface
 ======================================================
 
 Covers:
-- Argument parsing for start, status, register commands
+- Argument parsing for init, start, status, register commands
 - Default values for all arguments
+- cmd_init config generation
 - cmd_start invocation
 - cmd_status success and failure
 - cmd_register success and failure
@@ -19,7 +20,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from gateway_agent.cli import main, cmd_start, cmd_status, cmd_register
+from gateway_agent.cli import main, cmd_init, cmd_start, cmd_status, cmd_register
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -30,26 +31,49 @@ class TestCLIArgumentParsing:
 
     def test_no_command_exits(self):
         """Running with no command should exit with code 1."""
-        with patch("sys.argv", ["gateway-agent"]):
+        with patch("sys.argv", ["qbridge-gateway"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 1
 
+    def test_init_defaults(self):
+        """Init command should use default config path."""
+        with patch("sys.argv", ["qbridge-gateway", "init"]):
+            with patch("gateway_agent.cli.cmd_init") as mock_init:
+                main()
+                args = mock_init.call_args[0][0]
+                assert args.config == "config.json"
+                assert args.force is False
+
+    def test_init_custom_config(self):
+        with patch("sys.argv", ["qbridge-gateway", "init", "--config", "my_config.json"]):
+            with patch("gateway_agent.cli.cmd_init") as mock_init:
+                main()
+                args = mock_init.call_args[0][0]
+                assert args.config == "my_config.json"
+
+    def test_init_force_flag(self):
+        with patch("sys.argv", ["qbridge-gateway", "init", "--force"]):
+            with patch("gateway_agent.cli.cmd_init") as mock_init:
+                main()
+                args = mock_init.call_args[0][0]
+                assert args.force is True
+
     def test_start_defaults(self):
         """Start command should use default config, host, port."""
-        with patch("sys.argv", ["gateway-agent", "start"]):
+        with patch("sys.argv", ["qbridge-gateway", "start"]):
             with patch("gateway_agent.cli.cmd_start") as mock_start:
                 main()
                 args = mock_start.call_args[0][0]
-                assert args.config == "device_config.yaml"
+                assert args.config == "config.json"
                 assert args.host == "0.0.0.0"
-                assert args.port == 8765
+                assert args.port == 8090
                 assert args.reload is False
                 assert args.log_level == "INFO"
 
     def test_start_custom_args(self):
         with patch("sys.argv", [
-            "gateway-agent", "start",
+            "qbridge-gateway", "start",
             "--config", "custom.yaml",
             "--host", "127.0.0.1",
             "--port", "9999",
@@ -67,7 +91,7 @@ class TestCLIArgumentParsing:
 
     def test_start_short_flags(self):
         with patch("sys.argv", [
-            "gateway-agent", "start",
+            "qbridge-gateway", "start",
             "-c", "short.yaml",
             "-p", "7777",
         ]):
@@ -78,14 +102,14 @@ class TestCLIArgumentParsing:
                 assert args.port == 7777
 
     def test_status_defaults(self):
-        with patch("sys.argv", ["gateway-agent", "status"]):
+        with patch("sys.argv", ["qbridge-gateway", "status"]):
             with patch("gateway_agent.cli.cmd_status") as mock_status:
                 main()
                 args = mock_status.call_args[0][0]
-                assert args.url == "http://localhost:8765"
+                assert args.url == "http://localhost:8090"
 
     def test_status_custom_url(self):
-        with patch("sys.argv", ["gateway-agent", "status", "--url", "http://myhost:9000"]):
+        with patch("sys.argv", ["qbridge-gateway", "status", "--url", "http://myhost:9000"]):
             with patch("gateway_agent.cli.cmd_status") as mock_status:
                 main()
                 args = mock_status.call_args[0][0]
@@ -93,26 +117,26 @@ class TestCLIArgumentParsing:
 
     def test_register_requires_url(self):
         """Register command requires --url."""
-        with patch("sys.argv", ["gateway-agent", "register"]):
+        with patch("sys.argv", ["qbridge-gateway", "register"]):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code != 0
 
     def test_register_with_url(self):
         with patch("sys.argv", [
-            "gateway-agent", "register",
-            "--url", "https://api.swiftquantum.com",
+            "qbridge-gateway", "register",
+            "--url", "https://api.swiftquantum.tech",
         ]):
             with patch("gateway_agent.cli.cmd_register") as mock_register:
                 main()
                 args = mock_register.call_args[0][0]
-                assert args.url == "https://api.swiftquantum.com"
+                assert args.url == "https://api.swiftquantum.tech"
                 assert args.token is None
 
     def test_register_with_token(self):
         with patch("sys.argv", [
-            "gateway-agent", "register",
-            "--url", "https://api.swiftquantum.com",
+            "qbridge-gateway", "register",
+            "--url", "https://api.swiftquantum.tech",
             "--token", "mytoken123",
         ]):
             with patch("gateway_agent.cli.cmd_register") as mock_register:
@@ -122,7 +146,7 @@ class TestCLIArgumentParsing:
 
     def test_register_short_config(self):
         with patch("sys.argv", [
-            "gateway-agent", "register",
+            "qbridge-gateway", "register",
             "--url", "https://api.example.com",
             "-c", "alt_config.yaml",
         ]):
@@ -133,6 +157,73 @@ class TestCLIArgumentParsing:
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  cmd_init
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+class TestCmdInit:
+
+    def test_cmd_init_creates_json_config(self, tmp_path):
+        config_path = str(tmp_path / "config.json")
+        args = MagicMock()
+        args.config = config_path
+        args.force = False
+
+        cmd_init(args)
+
+        with open(config_path) as f:
+            config = json.load(f)
+        assert config["server"]["port"] == 8090
+        assert config["server"]["name"] == "my-gateway"
+        assert config["device"]["name"] == "local_simulator"
+        assert config["device"]["num_qubits"] == 20
+        assert "auth" in config
+        assert "registration" in config
+
+    def test_cmd_init_refuses_overwrite_without_force(self, tmp_path, capsys):
+        config_path = str(tmp_path / "config.json")
+        with open(config_path, "w") as f:
+            f.write("{}")
+
+        args = MagicMock()
+        args.config = config_path
+        args.force = False
+
+        with patch("sys.stdin") as mock_stdin:
+            mock_stdin.isatty.return_value = False
+            cmd_init(args)
+
+        captured = capsys.readouterr()
+        assert "already exists" in captured.out
+
+    def test_cmd_init_overwrites_with_force(self, tmp_path):
+        config_path = str(tmp_path / "config.json")
+        with open(config_path, "w") as f:
+            f.write("{}")
+
+        args = MagicMock()
+        args.config = config_path
+        args.force = True
+
+        cmd_init(args)
+
+        with open(config_path) as f:
+            config = json.load(f)
+        assert config["server"]["port"] == 8090
+
+    def test_cmd_init_prints_next_steps(self, tmp_path, capsys):
+        config_path = str(tmp_path / "config.json")
+        args = MagicMock()
+        args.config = config_path
+        args.force = False
+
+        cmd_init(args)
+
+        captured = capsys.readouterr()
+        assert "Config file created" in captured.out
+        assert "qbridge-gateway start" in captured.out
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 #  cmd_start
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -140,18 +231,18 @@ class TestCmdStart:
 
     def test_cmd_start_creates_server_and_starts(self):
         args = MagicMock()
-        args.config = "device_config.yaml"
+        args.config = "config.json"
         args.host = "0.0.0.0"
-        args.port = 8765
+        args.port = 8090
         args.reload = False
 
         with patch("gateway_agent.server.GatewayServer") as MockServer:
             mock_instance = MagicMock()
             MockServer.return_value = mock_instance
             cmd_start(args)
-            MockServer.assert_called_once_with(config_path="device_config.yaml")
+            MockServer.assert_called_once_with(config_path="config.json")
             mock_instance.start.assert_called_once_with(
-                host="0.0.0.0", port=8765, reload=False,
+                host="0.0.0.0", port=8090, reload=False,
             )
 
     def test_cmd_start_with_reload(self):
@@ -180,7 +271,7 @@ class TestCmdStatus:
         health_data = {
             "status": "healthy",
             "server_name": "test_gw",
-            "version": "1.0.0",
+            "version": "1.2.0",
             "uptime_seconds": 123.4,
             "device": {
                 "device": "local_simulator",
@@ -194,7 +285,7 @@ class TestCmdStatus:
         mock_response.__exit__ = MagicMock(return_value=False)
 
         args = MagicMock()
-        args.url = "http://localhost:8765"
+        args.url = "http://localhost:8090"
 
         with patch("urllib.request.urlopen", return_value=mock_response):
             cmd_status(args)
@@ -202,7 +293,7 @@ class TestCmdStatus:
         captured = capsys.readouterr()
         assert "healthy" in captured.out
         assert "test_gw" in captured.out
-        assert "1.0.0" in captured.out
+        assert "1.2.0" in captured.out
 
     def test_cmd_status_failure(self):
         args = MagicMock()
@@ -238,7 +329,7 @@ device:
         mock_response.__exit__ = MagicMock(return_value=False)
 
         args = MagicMock()
-        args.url = "https://api.swiftquantum.com"
+        args.url = "https://api.swiftquantum.tech"
         args.config = str(config_file)
         args.token = "test-token"
 
@@ -250,8 +341,8 @@ device:
 
     def test_cmd_register_failure(self):
         args = MagicMock()
-        args.url = "https://api.swiftquantum.com"
-        args.config = "device_config.yaml"
+        args.url = "https://api.swiftquantum.tech"
+        args.config = "config.json"
         args.token = None
 
         with patch("gateway_agent.server.GatewayServer") as MockServer:
@@ -297,7 +388,7 @@ device:
 class TestCLILogging:
 
     def test_log_level_from_args(self):
-        with patch("sys.argv", ["gateway-agent", "start", "--log-level", "WARNING"]):
+        with patch("sys.argv", ["qbridge-gateway", "start", "--log-level", "WARNING"]):
             with patch("gateway_agent.cli.cmd_start"):
                 with patch("logging.basicConfig") as mock_logging:
                     main()
@@ -306,7 +397,7 @@ class TestCLILogging:
                     assert mock_logging.call_args[1]["level"] == logging.WARNING
 
     def test_default_log_level(self):
-        with patch("sys.argv", ["gateway-agent", "start"]):
+        with patch("sys.argv", ["qbridge-gateway", "start"]):
             with patch("gateway_agent.cli.cmd_start"):
                 with patch("logging.basicConfig") as mock_logging:
                     main()
