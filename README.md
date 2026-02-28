@@ -26,8 +26,8 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 pip install qbridge-gateway
 
 # From source
-git clone https://github.com/Minapak/gateway-agent.git
-cd gateway-agent
+git clone https://github.com/Minapak/qbridge-gateway.git
+cd qbridge-gateway
 pip install -e .
 ```
 
