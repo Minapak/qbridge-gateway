@@ -1,5 +1,15 @@
 # Gateway Agent 배포 기록 가이드
 
+## v1.3.0 -- 2026-03-05
+
+### i18n 모듈 추가
+- `gateway_agent/i18n/__init__.py` 신규 생성 (44 translation keys, 7 languages)
+- `get_translation()` 함수: 3-tier fallback (요청 언어 → 영어 → 키)
+- 8개 카테고리: server, connection, protocol, device, auth, error, cli, status
+- 문서 6개 업데이트
+
+---
+
 ## 배포 인프라
 
 | 항목 | 값 |

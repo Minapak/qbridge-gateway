@@ -2,6 +2,18 @@
 
 All notable changes to Q-Bridge Gateway Agent will be documented in this file.
 
+## [1.3.0] - 2026-03-05
+
+### Added — Internationalization (i18n) Module
+- **`gateway_agent/i18n/__init__.py`**: New i18n module with 44 translation keys across 8 categories (server, connection, protocol, device, auth, error, cli, status)
+- **7 languages supported**: en, ko, ja, zh, de, fr, es
+- **`get_translation(key, lang, **kwargs)`**: Main translation function with 3-tier fallback (requested language → English → key)
+- **`get_supported_languages()`**: Returns list of supported language codes
+- **`get_all_keys()`**: Returns list of all translation keys
+- Format parameter support via `str.format()` (e.g., `port`, `client_id`, `job_id`)
+
+---
+
 ## [1.2.0] - 2026-02-28
 
 ### Changed — iOS App Alignment
