@@ -18,7 +18,7 @@ Or programmatically:
     server.start(host="0.0.0.0", port=8090)
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 __author__ = "EUNMIN Park"
 __email__ = "admin@swiftquantumnative.com"
 __license__ = "MIT"

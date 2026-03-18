@@ -154,7 +154,7 @@ class GatewayServer:
         """Create FastAPI application with all gateway endpoints."""
         app = FastAPI(
             title="Q-Bridge Gateway Agent",
-            version="1.2.0",
+            version="1.3.0",
             description="Researcher-hosted quantum hardware gateway",
         )
 
