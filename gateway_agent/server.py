@@ -524,7 +524,7 @@ class GatewayServer:
         async def handle_message(request: GatewayMessageRequest):
             """Handle generic gateway protocol message."""
             try:
-                msg = GatewayMessage.from_dict(request.dict())
+                msg = GatewayMessage.from_dict(request.model_dump())
 
                 if msg.type == MessageType.HEALTH_CHECK:
                     response = GatewayMessage.create_health_response(

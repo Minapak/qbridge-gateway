@@ -1,5 +1,20 @@
 # Gateway Agent 배포 기록 가이드
 
+## v1.3.0-patch -- 2026-04-02
+
+### 버전 동기화 + Pydantic 수정 + CI/CD 파이프라인 생성
+- cli.py 버전 표시 v1.2.0 → v1.3.0 동기화
+- test_init.py 기대값 1.2.0 → 1.3.0 동기화
+- Pydantic deprecated API 수정: `request.dict()` → `request.model_dump()`
+- GitHub Actions CI/CD 파이프라인 생성 (`.github/workflows/ci.yml`)
+  - Python 3.10, 3.11, 3.12 매트릭스 테스트
+  - ruff, black, mypy 코드 품질 검사
+  - Docker 빌드 검증
+- **Tests**: 221 passed (100%)
+- **Build**: Success
+
+---
+
 ## v1.3.0 -- 2026-03-05
 
 ### i18n 모듈 추가
@@ -18,7 +33,7 @@
 | 기본 포트 | 8765 |
 | 프로토콜 | HTTP REST + WebSocket + gRPC |
 | 패키지 | `pip install -e .` (pyproject.toml 기반) |
-| CI/CD | 수동 배포 (GitHub Actions 미설정) |
+| CI/CD | GitHub Actions (ci.yml: Python 3.10/3.11/3.12 매트릭스) |
 | 연동 | SwiftQuantumBackend → Gateway Agent → 양자 백엔드 |
 
 ---

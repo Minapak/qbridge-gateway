@@ -185,7 +185,7 @@ def cmd_start(args):
     from .server import GatewayServer
 
     print("=" * 60)
-    print("  Q-Bridge Gateway Agent v1.2.0")
+    print("  Q-Bridge Gateway Agent v1.3.0")
     print("=" * 60)
     print(f"  Config:  {args.config}")
     print(f"  Host:    {args.host}")

@@ -2,6 +2,23 @@
 
 All notable changes to Q-Bridge Gateway Agent will be documented in this file.
 
+## [1.3.0-patch] - 2026-04-02
+### Fixed
+- cli.py 버전 표시 v1.2.0 → v1.3.0 동기화
+- test_init.py 기대값 1.2.0 → 1.3.0 동기화
+- Pydantic deprecated API 수정: request.dict() → request.model_dump()
+
+### Added
+- GitHub Actions CI/CD 파이프라인 생성 (.github/workflows/ci.yml)
+  - Python 3.10, 3.11, 3.12 매트릭스 테스트
+  - ruff, black, mypy 코드 품질 검사
+  - Docker 빌드 검증
+
+### Verified
+- 221 tests passed (기존 1 실패 → 전량 통과)
+
+---
+
 ## [1.3.0] - 2026-03-05
 
 ### Added — Internationalization (i18n) Module
