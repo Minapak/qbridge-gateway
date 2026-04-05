@@ -8,7 +8,10 @@ server:
   host: "0.0.0.0"
   port: 8090
   cors_origins:
-    - "*"
+    - "https://api.swiftquantum.tech"
+    - "https://bridge.swiftquantum.tech"
+    - "http://localhost:3000"
+    - "http://localhost:8000"
 
 device:
   name: "local_simulator"
@@ -36,9 +39,9 @@ device:
     - measure
   max_shots: 1000000
 
-# Authentication (optional)
+# Authentication — v9.4.2: enabled by default for security
 auth:
-  enabled: false
+  enabled: true
   token: "${GATEWAY_AUTH_TOKEN}"
 
 # Registration with SwiftQuantum Cloud (optional)
