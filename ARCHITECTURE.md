@@ -87,6 +87,22 @@ devices:
 - `LOG_LEVEL` — Logging level
 - `AUTH_SECRET` — Authentication secret
 
+## Auth & Rate Limiting Middleware (2026-04-06)
+
+```
+Request → GatewayAuthRateLimitMiddleware
+           ├── Bearer token validation (hmac.compare_digest, constant-time)
+           ├── Sliding-window rate limiter (60 req/min default, configurable)
+           └── CORS: swiftquantum.tech domains only, GET/POST/OPTIONS
+```
+
+- **GATEWAY_API_KEY**: Loaded from environment variable or config file
+- **Rate limit**: 60 requests/minute default, configurable per deployment
+- **CORS**: Restricted from `["*"]` to swiftquantum.tech production domains
+- **Allowed methods**: GET, POST, OPTIONS only (PUT/DELETE/PATCH blocked)
+
+---
+
 ## Integration
 
 The Gateway Agent integrates with:

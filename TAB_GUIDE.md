@@ -195,6 +195,33 @@ A unified endpoint for handling any SwiftQuantum Gateway Protocol message. Dispa
 
 ---
 
+## Section 6: Auth & Rate Limiting (2026-04-06)
+
+All endpoints now require Bearer token authentication via the `GatewayAuthRateLimitMiddleware`.
+
+### Authentication
+
+| Header | Value |
+|--------|-------|
+| `Authorization` | `Bearer {GATEWAY_API_KEY}` |
+
+- **GATEWAY_API_KEY** can be set via environment variable or config file
+- Token comparison uses `hmac.compare_digest` (constant-time) to prevent timing attacks
+
+### Rate Limiting
+
+- **Default**: 60 requests/minute per client (sliding window)
+- **Configurable**: Override via config file
+- **Response**: `429 Too Many Requests` when limit exceeded
+
+### CORS Policy
+
+- **Allowed origins**: swiftquantum.tech domains only (previously `["*"]`)
+- **Allowed methods**: GET, POST, OPTIONS
+- **Blocked methods**: PUT, DELETE, PATCH
+
+---
+
 ## All Endpoints Summary
 
 | # | Method | URL | Description |

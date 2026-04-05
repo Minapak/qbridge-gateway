@@ -55,6 +55,14 @@
 | Custom Lab | Configurable | gRPC |
 | Xanadu | Photonic (CV) | REST |
 
+### Auth & Rate Limiting (2026-04-06)
+- **GatewayAuthRateLimitMiddleware**: Bearer token authentication with sliding-window rate limiter
+- CORS restricted to swiftquantum.tech domains (previously `["*"]`)
+- Allowed methods: GET, POST, OPTIONS only
+- 60 req/min default rate limit, configurable
+- GATEWAY_API_KEY support via env var and config file
+- hmac.compare_digest constant-time token comparison
+
 ## Integration Points
 
 - SwiftQuantumBackend gateway router

@@ -70,6 +70,42 @@ python3 -m pytest tests/ --cov=gateway_agent --cov-report=term-missing
 
 ---
 
+## Auth & Rate Limiting Tests (2026-04-06)
+
+### GatewayAuthRateLimitMiddleware Verification
+
+```bash
+# Request without token (should return 401)
+curl http://localhost:8090/gateway/health
+# Expected: 401 Unauthorized
+
+# Request with valid Bearer token
+curl -H "Authorization: Bearer $GATEWAY_API_KEY" \
+  http://localhost:8090/gateway/health
+# Expected: 200 OK
+
+# Rate limit test (send 61 requests in 1 minute)
+for i in $(seq 1 61); do
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    -H "Authorization: Bearer $GATEWAY_API_KEY" \
+    http://localhost:8090/gateway/health
+done
+# Expected: 60x 200, then 429 Too Many Requests
+
+# CORS test (non-swiftquantum origin should be rejected)
+curl -H "Origin: https://evil.com" \
+  -H "Authorization: Bearer $GATEWAY_API_KEY" \
+  http://localhost:8090/gateway/health
+# Expected: No Access-Control-Allow-Origin header
+
+# Disallowed method test
+curl -X DELETE -H "Authorization: Bearer $GATEWAY_API_KEY" \
+  http://localhost:8090/gateway/health
+# Expected: 405 Method Not Allowed
+```
+
+---
+
 ## Important Notes
 
 - **YAML 파싱**: `server.py`의 `_load_config`에서 malformed YAML을 `dict` 타입 체크로 처리

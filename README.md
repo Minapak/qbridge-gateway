@@ -17,6 +17,16 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 
 ---
 
+## Recent Session Changes (2026-04-06)
+
+- **GatewayAuthRateLimitMiddleware**: Bearer token auth + sliding-window rate limiter (60 req/min default)
+- **CORS restricted**: `["*"]` → swiftquantum.tech domains only
+- **allow_methods**: GET/POST/OPTIONS only
+- **GATEWAY_API_KEY**: Env var + config file support
+- **hmac.compare_digest**: Constant-time comparison for security
+
+---
+
 ## Quick Start
 
 ### Install

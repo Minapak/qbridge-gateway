@@ -1,5 +1,17 @@
 # Gateway Agent 배포 기록 가이드
 
+## v1.4.0-session -- 2026-04-06
+
+### Auth & Rate Limiting Middleware + CORS Hardening
+- **GatewayAuthRateLimitMiddleware**: Bearer token auth + sliding-window rate limiter (60 req/min default)
+- **CORS restricted**: `["*"]` → swiftquantum.tech domains only
+- **allow_methods**: GET/POST/OPTIONS only
+- **GATEWAY_API_KEY**: Environment variable + config file support
+- **hmac.compare_digest**: Constant-time token comparison
+- **Result:** (pending)
+
+---
+
 ## v1.3.0-patch -- 2026-04-02
 
 ### 버전 동기화 + Pydantic 수정 + CI/CD 파이프라인 생성

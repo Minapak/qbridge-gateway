@@ -2,6 +2,20 @@
 
 All notable changes to Q-Bridge Gateway Agent will be documented in this file.
 
+## [1.4.0-session] - 2026-04-06
+
+### Added
+- **GatewayAuthRateLimitMiddleware**: Bearer token authentication + sliding-window rate limiter (60 req/min default, configurable)
+- **GATEWAY_API_KEY**: Environment variable + config file support for API key management
+- **hmac.compare_digest**: Constant-time token comparison to prevent timing attacks
+
+### Security
+- **CORS Restricted**: `allow_origins=["*"]` replaced with swiftquantum.tech domain whitelist
+- **allow_methods**: Restricted to GET, POST, OPTIONS only
+- **Rate limit**: 60 requests/minute default, configurable via config
+
+---
+
 ## [1.3.0-patch] - 2026-04-02
 ### Fixed
 - cli.py 버전 표시 v1.2.0 → v1.3.0 동기화
