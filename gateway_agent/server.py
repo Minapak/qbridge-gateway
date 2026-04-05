@@ -19,10 +19,13 @@ Usage:
     server.start(host="0.0.0.0", port=8090)
 """
 
+import hashlib
+import hmac
 import json
 import logging
 import os
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -33,9 +36,12 @@ except ImportError:
     YAML_AVAILABLE = False
 
 try:
-    from fastapi import FastAPI, HTTPException
+    from fastapi import Depends, FastAPI, HTTPException, Request
     from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
     from pydantic import BaseModel
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.responses import JSONResponse
     FASTAPI_AVAILABLE = True
 except ImportError:
     FASTAPI_AVAILABLE = False
@@ -44,6 +50,109 @@ from .device_interface import DeviceInterface, LocalSimulator, DeviceInfo
 from .protocol import GatewayMessage, MessageType
 
 logger = logging.getLogger(__name__)
+
+# Gateway API key for authentication.
+# Set via GATEWAY_API_KEY env var or config file.
+# When empty, authentication is disabled (development mode).
+_GATEWAY_API_KEY = os.environ.get("GATEWAY_API_KEY", "")
+
+
+# ─── Token Verification ───
+
+def _verify_gateway_token(token: str) -> bool:
+    """Verify a gateway API key using constant-time comparison."""
+    if not _GATEWAY_API_KEY:
+        return True  # Auth disabled in dev mode
+    return hmac.compare_digest(token, _GATEWAY_API_KEY)
+
+
+# ─── In-Memory Sliding Window Rate Limiter ───
+
+class _SlidingWindowRateLimiter:
+    """Per-client sliding-window rate limiter (in-memory)."""
+
+    def __init__(self, max_requests: int = 60, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self._requests: Dict[str, List[float]] = defaultdict(list)
+
+    def is_allowed(self, client_id: str) -> tuple[bool, int, int]:
+        """Returns (allowed, remaining, retry_after_seconds)."""
+        now = time.time()
+        window_start = now - self.window_seconds
+        # Prune expired entries
+        self._requests[client_id] = [
+            t for t in self._requests[client_id] if t > window_start
+        ]
+        current_count = len(self._requests[client_id])
+
+        if current_count >= self.max_requests:
+            oldest = self._requests[client_id][0] if self._requests[client_id] else now
+            retry_after = int(oldest + self.window_seconds - now) + 1
+            return False, 0, max(retry_after, 1)
+
+        self._requests[client_id].append(now)
+        return True, self.max_requests - current_count - 1, 0
+
+
+# ─── Gateway Auth + Rate Limit Middleware ───
+
+if FASTAPI_AVAILABLE:
+    class GatewayAuthRateLimitMiddleware(BaseHTTPMiddleware):
+        """Combined authentication and rate limiting middleware for the gateway."""
+
+        # Health check is always public
+        PUBLIC_PATHS = {"/gateway/health", "/docs", "/openapi.json"}
+
+        def __init__(self, app, rate_limiter: _SlidingWindowRateLimiter):
+            super().__init__(app)
+            self.rate_limiter = rate_limiter
+
+        async def dispatch(self, request: Request, call_next):
+            path = request.url.path
+
+            # Public endpoints skip auth
+            if path in self.PUBLIC_PATHS:
+                return await call_next(request)
+
+            # ── Authentication ──
+            if _GATEWAY_API_KEY:
+                auth_header = request.headers.get("authorization", "")
+                if not auth_header.startswith("Bearer "):
+                    return JSONResponse(
+                        status_code=401,
+                        content={"error": "authentication_required",
+                                 "message": "Bearer token required. Set Authorization header."},
+                    )
+                token = auth_header[7:]  # Strip "Bearer "
+                if not _verify_gateway_token(token):
+                    return JSONResponse(
+                        status_code=403,
+                        content={"error": "invalid_token",
+                                 "message": "Invalid gateway API key."},
+                    )
+
+            # ── Rate Limiting ──
+            client_ip = request.client.host if request.client else "unknown"
+            allowed, remaining, retry_after = self.rate_limiter.is_allowed(client_ip)
+
+            if not allowed:
+                return JSONResponse(
+                    status_code=429,
+                    content={"error": "rate_limited",
+                             "message": f"Too many requests. Retry after {retry_after}s.",
+                             "retry_after": retry_after},
+                    headers={
+                        "Retry-After": str(retry_after),
+                        "X-RateLimit-Limit": str(self.rate_limiter.max_requests),
+                        "X-RateLimit-Remaining": "0",
+                    },
+                )
+
+            response = await call_next(request)
+            response.headers["X-RateLimit-Limit"] = str(self.rate_limiter.max_requests)
+            response.headers["X-RateLimit-Remaining"] = str(remaining)
+            return response
 
 
 # ─── Request/Response Models ───
@@ -158,15 +267,41 @@ class GatewayServer:
             description="Researcher-hosted quantum hardware gateway",
         )
 
-        # CORS
-        cors_origins = self.config.get("server", {}).get("cors_origins", ["*"])
+        # CORS — v9.4.2: Default restricted to SwiftQuantum domains (was ["*"])
+        _default_cors = [
+            "https://api.swiftquantum.tech",
+            "https://bridge.swiftquantum.tech",
+            "https://admin.swiftquantum.tech",
+            "https://www.swiftquantum.tech",
+            "http://localhost:3000",
+            "http://localhost:8000",
+            "http://localhost:8001",
+        ]
+        cors_origins = self.config.get("server", {}).get("cors_origins", _default_cors)
         app.add_middleware(
             CORSMiddleware,
             allow_origins=cors_origins,
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
         )
+
+        # Auth + Rate Limiting
+        rate_config = self.config.get("server", {}).get("rate_limit", {})
+        rate_limiter = _SlidingWindowRateLimiter(
+            max_requests=rate_config.get("max_requests", 60),
+            window_seconds=rate_config.get("window_seconds", 60),
+        )
+        app.add_middleware(GatewayAuthRateLimitMiddleware, rate_limiter=rate_limiter)
+
+        # Load API key from config if not set via env
+        global _GATEWAY_API_KEY
+        if not _GATEWAY_API_KEY:
+            _GATEWAY_API_KEY = self.config.get("server", {}).get("api_key", "")
+        if _GATEWAY_API_KEY:
+            logger.info("Gateway authentication enabled (API key configured)")
+        else:
+            logger.warning("Gateway authentication DISABLED — set GATEWAY_API_KEY env var for production")
 
         # ─── Endpoints ───
 

@@ -4,7 +4,12 @@
     "id": "gw_001",
     "host": "0.0.0.0",
     "port": 8090,
-    "cors_origins": ["*"]
+    "cors_origins": [
+      "https://api.swiftquantum.tech",
+      "https://bridge.swiftquantum.tech",
+      "http://localhost:3000",
+      "http://localhost:8000"
+    ]
   },
   "device": {
     "name": "local_simulator",
@@ -20,8 +25,8 @@
     "max_shots": 1000000
   },
   "auth": {
-    "enabled": false,
-    "token": ""
+    "enabled": true,
+    "token": "${GATEWAY_AUTH_TOKEN}"
   },
   "registration": {
     "auto_register": false,
