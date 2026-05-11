@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-05-11 — v1.3.0 release artifacts staged on S3 + iOS pairing UI shipped
+
+This session prepared the qbridge-gateway 1.3.0 release for distribution
+without exposing any new code surface (the gateway code itself is
+unchanged from `4f507d4`).
+
+Build artifacts:
+- `python3 -m build` produced
+  `dist/qbridge_gateway-1.3.0-py3-none-any.whl` (26 KB) and
+  `dist/qbridge_gateway-1.3.0.tar.gz` (41 KB).
+
+S3 upload — new bucket `sq-gateway-releases` (ap-northeast-2):
+- `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0-py3-none-any.whl`
+- `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0.tar.gz`
+- `s3://sq-gateway-releases/gateway/latest` (alias for the wheel)
+
+iOS / macOS Q-Bridge app (commit `bd9450e` in `Minapak/Q-Bridge`):
+- New `QBGatewayPairingService` `@MainActor` singleton — POST
+  `/api/v1/pair/exchange` exchanges a 6-digit OTP for a long-lived
+  device token + canonical gateway URL. UserDefaults-persisted.
+- New `QBQRScannerView` — AVFoundation back-camera scanner on iOS,
+  paste-payload fallback on macOS.
+- `QBGatewaySetupView` gains a `pairingSection` with Scan QR / manual
+  URL + 6-digit OTP form / paired-device card with Unpair.
+
+After the user completes `twine upload dist/*` (PyPI API token is
+user-owned), end-users can `pip install qbridge-gateway`, run the agent
+locally, and the iOS app pairs in seconds via OTP/QR.
+
+Optional next step (infra owner): CloudFront distribution + Route53
+alias `releases.swiftquantum.tech` → `sq-gateway-releases`. Not required
+— PyPI publish alone unblocks the install path.
+
+See sister guide `~/Desktop/REAL/Q-Bridge_PyPI_publish_가이드.html`
+for the full step-by-step (steps 2-5 + 8 are auto-completed in this
+session; 0, 1, 6, 7, 9 require user PyPI credentials).
+
 All notable changes to Q-Bridge Gateway Agent will be documented in this file.
 
 ## [1.4.0-session] - 2026-04-06

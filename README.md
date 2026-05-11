@@ -269,3 +269,20 @@ qbridge-gateway register --url API_URL [--token TOKEN] [--config PATH]
 ## License
 
 MIT License
+
+## Release Distribution (1.3.0)
+
+Build artifacts produced by `python3 -m build` are staged on S3:
+
+- `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0-py3-none-any.whl`
+- `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0.tar.gz`
+- `s3://sq-gateway-releases/gateway/latest` (alias for the wheel)
+
+PyPI publish requires the maintainer's API token —
+`twine upload dist/qbridge_gateway-1.3.0*` from
+`~/Desktop/WORK/qbridge-gateway/`.
+
+iOS / macOS Q-Bridge app pairs with a running gateway agent via
+OTP/QR (Settings → Gateway, v9.14.1). After PyPI publish, end-users
+can `pip install qbridge-gateway`, run the agent, and pair without
+any further setup.
