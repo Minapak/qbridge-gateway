@@ -1,3 +1,23 @@
+## v5.0.8 — 2026-05-17 — iOS/macOS clients verified against fixed backend
+
+No client code change in this version — the JWT-`aud` bug that was
+hitting the auth lifecycle was on the backend (`middleware/auth.py` on
+`Q-Logos_Backend`). Once that landed (task def `qlogos-backend:38`)
+the iOS `AuthManager.login()` + `register()` + `getProfile()` flows
+work end-to-end through the same `APIClient` Bearer-token plumbing.
+
+iOS + macOS builds re-verified clean:
+- `xcodebuild -scheme Q-Logos_iOS -destination 'generic/platform=iOS Simulator'` → BUILD SUCCEEDED
+- `xcodebuild -scheme Q-Logos_macOS -destination 'generic/platform=macOS'` → BUILD SUCCEEDED
+
+## v1.4.1 — 2026-05-17 — No code change; verified Q-Logos proxy route compiles
+
+The v1.4.0 `/gateway/qlogos/{path}` proxy from yesterday's release was
+re-confirmed clean (no compile/import regressions) during the
+Q-Logos v5.0.8 backend hotfix cycle. The gateway itself doesn't yet
+have a production ECS service; the proxy code is ready to ship when the
+gateway is brought up.
+
 ## v1.4.0 — 2026-05-17 — Q-Logos backend proxy at `/gateway/qlogos/{path:path}`
 
 Before this release, qbridge-gateway exposed only quantum-compute endpoints (`/gateway/execute`,
