@@ -163,3 +163,10 @@ python3 -m gateway_agent.cli serve --port 8765 &
 3. **MessageType 추가 시 양쪽 동기화** — `protocol.py`에 새 MessageType 추가 시, `server.py`의 `handle_message()`에도 라우팅 추가 필수
 4. **gRPC와 REST 동시 지원** — 클라이언트별로 REST 또는 gRPC 선택 가능, 둘 다 테스트 필요
 5. **LocalSimulator 한계** — 큐빗 20개 이상 시뮬레이션은 메모리 제한에 주의
+
+## 2026-05-17 — v1.4.0 code shipped (manual deploy required)
+
+Code merged to main. qbridge-gateway runs as a sidecar / standalone server (no ECS service yet on
+the SwiftQuantum production cluster — `aws ecs list-services` shows no matching service). To
+roll out, redeploy the gateway host with the new code and the env var
+`QLOGOS_BACKEND_URL=https://qlogos-api.swiftquantum.tech` (default applies if unset).

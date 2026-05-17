@@ -51,6 +51,16 @@ from .protocol import GatewayMessage, MessageType
 
 logger = logging.getLogger(__name__)
 
+
+def _safe_json(resp) -> Any:
+    """Best-effort JSON parse on an httpx response; falls back to a
+    `{"detail": "<raw text>"}` envelope so the gateway always returns
+    JSON even when upstream emits non-JSON error pages."""
+    try:
+        return resp.json()
+    except Exception:
+        return {"detail": (resp.text or "")[:512]}
+
 # Gateway API key for authentication.
 # Set via GATEWAY_API_KEY env var or config file.
 # When empty, authentication is disabled (development mode).
@@ -654,6 +664,70 @@ class GatewayServer:
             except Exception as e:
                 logger.error(f"BB decoder simulation failed: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+
+        # ─── Q-Logos backend proxy (v1.1.0) ───
+        # The gateway previously had zero routes that touched the Q-Logos
+        # logistics backend — clients hit qlogos-api.swiftquantum.tech
+        # directly. This proxy unifies traffic so a single auth token
+        # works against both quantum compute (this gateway) and logistics
+        # endpoints (Q-Logos_Backend), and gives us a single rate-limit
+        # bottleneck for tier-gated APIs.
+        import os as _os
+        _QLOGOS_BASE = _os.environ.get(
+            "QLOGOS_BACKEND_URL",
+            "https://qlogos-api.swiftquantum.tech",
+        )
+        _QLOGOS_TIMEOUT = float(_os.environ.get("QLOGOS_PROXY_TIMEOUT_SEC", "10.0"))
+
+        @app.api_route(
+            "/gateway/qlogos/{path:path}",
+            methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        )
+        async def qlogos_proxy(path: str, request: Request):
+            """Pass-through proxy to Q-Logos_Backend with tier-aware auth.
+
+            Path is appended to QLOGOS_BACKEND_URL/v1/. Forwards the
+            original Authorization header so JWT-based tier checks at the
+            destination still work. Streams the body as-is (bytes).
+            """
+            try:
+                import httpx  # type: ignore
+            except ImportError:
+                raise HTTPException(
+                    status_code=503,
+                    detail="qlogos proxy unavailable: httpx not installed",
+                )
+
+            forwarded_headers = {}
+            for key in ("authorization", "content-type", "accept-language", "x-pqc-algorithm", "x-pqc-standard"):
+                if key in request.headers:
+                    forwarded_headers[key] = request.headers[key]
+
+            target = f"{_QLOGOS_BASE.rstrip('/')}/v1/{path.lstrip('/')}"
+            params = dict(request.query_params)
+            body = await request.body()
+
+            try:
+                async with httpx.AsyncClient(timeout=_QLOGOS_TIMEOUT) as client:
+                    upstream = await client.request(
+                        method=request.method,
+                        url=target,
+                        params=params,
+                        headers=forwarded_headers,
+                        content=body,
+                    )
+            except httpx.RequestError as exc:
+                logger.warning("qlogos proxy upstream error %s: %s", target, exc)
+                raise HTTPException(status_code=502, detail=f"upstream unreachable: {exc}")
+
+            return JSONResponse(
+                status_code=upstream.status_code,
+                content=_safe_json(upstream),
+                headers={
+                    k: v for k, v in upstream.headers.items()
+                    if k.lower() in {"content-type", "x-tier-required", "x-rate-limit-remaining"}
+                },
+            )
 
         @app.post("/gateway/message")
         async def handle_message(request: GatewayMessageRequest):

@@ -1,3 +1,20 @@
+## v1.4.0 — 2026-05-17 — Q-Logos backend proxy at `/gateway/qlogos/{path:path}`
+
+Before this release, qbridge-gateway exposed only quantum-compute endpoints (`/gateway/execute`,
+`/gateway/transpile`, `/gateway/job/*`, `/gateway/qec/*`) and had zero routing into the Q-Logos
+logistics backend. Clients hit `qlogos-api.swiftquantum.tech` directly. v1.4.0 introduces a
+pass-through proxy so a single gateway-issued bearer token works against both compute and
+logistics endpoints, and rate-limiting is centralized.
+
+- `GET/POST/PUT/PATCH/DELETE /gateway/qlogos/{path:path}` — forwards the request to
+  `${QLOGOS_BACKEND_URL}/v1/{path}` (default `https://qlogos-api.swiftquantum.tech`)
+- Authorization, content-type, Accept-Language, and X-PQC-* headers are propagated
+- Upstream JSON is returned verbatim; non-JSON errors are wrapped in a `{detail}` envelope
+- Network failures → 502 with the original exception in `detail`
+- `_safe_json()` helper added at module top so non-JSON 500 pages don't crash the proxy
+
+Backward-compatible: all existing endpoints unchanged. New env var `QLOGOS_PROXY_TIMEOUT_SEC`
+(default 10.0).
 # Changelog
 
 ## 2026-05-11 — v1.3.0 release artifacts staged on S3 + iOS pairing UI shipped
