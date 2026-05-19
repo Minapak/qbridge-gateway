@@ -170,3 +170,19 @@ Code merged to main. qbridge-gateway runs as a sidecar / standalone server (no E
 the SwiftQuantum production cluster — `aws ecs list-services` shows no matching service). To
 roll out, redeploy the gateway host with the new code and the env var
 `QLOGOS_BACKEND_URL=https://qlogos-api.swiftquantum.tech` (default applies if unset).
+
+## 2026-05-19 16:55 KST — v1.5.0 FIRST PRODUCTION DEPLOY
+
+ECS service brought up for the first time. Steps performed:
+  1. ECR repo created
+  2. docker buildx build --platform linux/arm64 + push (image 20260519-163721)
+  3. CloudWatch log group /ecs/qbridge-gateway + 30d retention
+  4. ALB target group uni-qbridge-gw-tg (port 8090, healthcheck /gateway/health)
+  5. ECS task def revision 1 + service qbridge-gateway-service
+  6. ALB listener rule priority 21 for qbridge-api.swiftquantum.tech (host
+     `qbridge.swiftquantum.tech` is taken by Q-Bridge web app rule at 330)
+  7. SG sg-003b9967a09935103 opened inbound 8090 from ALB SG
+  8. QLOGOS_BACKEND_URL env wired in task def so /gateway/qlogos/{path} proxy
+     reaches the production Q-Logos backend automatically
+
+Smoke tests post-deploy: /gateway/health, /gateway/backends both 200.

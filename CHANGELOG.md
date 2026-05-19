@@ -1,3 +1,26 @@
+## v1.5.0 — 2026-05-19 — Production ECS deployment LIVE
+
+Brought the gateway up in production on the SwiftQuantum ECS cluster for
+the first time:
+
+- ECR repo `swiftquantum/qbridge-gateway` created · ARM64 image
+  `qbridge-gateway:20260519-163721` pushed
+- ECS service `qbridge-gateway-service` on `swiftquantum-production-cluster`
+  (Fargate, 256 CPU / 512 MB, ARM64, 1 task healthy)
+- ALB target group `uni-qbridge-gw-tg` (port 8090, healthcheck
+  `/gateway/health`), listener rule priority 21 on `sq-unified-alb`
+  matching `qbridge-api.swiftquantum.tech` (the existing
+  `qbridge.swiftquantum.tech` rule already routes the Q-Bridge web app to
+  `uni-bridge-web-tg`, so the gateway gets its own host)
+- Security group inbound 8090 opened from ALB SG `sg-005c3f5722e9797c3`
+- CloudWatch log group `/ecs/qbridge-gateway` (30-day retention)
+- `QLOGOS_BACKEND_URL=https://qlogos-api.swiftquantum.tech` env var passed
+  in via the task def so `/gateway/qlogos/{path}` proxy routes to the live
+  Q-Logos backend without manual configuration
+
+**Production verification (2026-05-19 16:55 KST):**
+- `GET /gateway/health` → 200, returns `{"status":"healthy","server_name":"my-gateway",…}`
+- `GET /gateway/backends` → 200, returns the local_simulator info
 ## v5.0.8 — 2026-05-17 — iOS/macOS clients verified against fixed backend
 
 No client code change in this version — the JWT-`aud` bug that was
