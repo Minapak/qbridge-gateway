@@ -316,8 +316,14 @@ class GatewayServer:
         # ─── Endpoints ───
 
         @app.get("/gateway/health")
+        @app.get("/health")
         async def health_check():
-            """Health check endpoint."""
+            """Health check endpoint.
+
+            Also exposed at `/health` so sq-unified-alb host probes
+            (qbridge-api.swiftquantum.tech/health) succeed with parity
+            against the other 8 *-api services.
+            """
             uptime = time.time() - self.start_time
             device_status = self.device.get_status()
             return {
