@@ -1,3 +1,13 @@
+## v1.5.1 — 2026-05-23 — `/health` alias for sq-unified-alb parity (9/9 health matrix)
+
+**Why:** `qbridge-api.swiftquantum.tech/health` returned 404 because the gateway only registered `/gateway/health`. The other 8 `*-api.swiftquantum.tech` services on sq-unified-alb all expose `/health` directly, leaving qbridge-api as the only host failing the production health probe (8/9 → 9/9 ask).
+
+**What shipped:**
+- `gateway_agent/server.py` — second `@app.get("/health")` decorator on the existing `health_check()` handler so both `/health` and `/gateway/health` return the same payload (status, server_name, server_id, version, protocol_version, uptime_seconds, device).
+- Image: `qbridge-gateway:7639a57-20260523-121027-health-alias` → ECS `qbridge-gateway:2`.
+
+**Live verification 2026-05-23:** `curl -m 6 https://qbridge-api.swiftquantum.tech/health` → 200 with full JSON body. Production 9/9 health matrix green.
+
 ## v1.5.0 — 2026-05-19 — Production ECS deployment LIVE
 
 Brought the gateway up in production on the SwiftQuantum ECS cluster for
