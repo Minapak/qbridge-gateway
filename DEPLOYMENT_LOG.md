@@ -1,5 +1,25 @@
 # Gateway Agent 배포 기록 가이드
 
+## 2026-05-23 — verification sweep · gateway local boot OK on dev box
+
+Part of the eleven-project cross-stack verification sweep. No code
+change. Verified:
+
+- `python -m gateway_agent.cli init --config=/tmp/qbridge.json` writes
+  a working LocalSimulator config.
+- `python -m gateway_agent.cli start --config=/tmp/qbridge.json --port 8090`
+  serves 13 endpoints under `/gateway/*`: `/health`, `/backends`,
+  `/execute`, `/transpile`, `/job/{id}`, `/job/{id}/cancel`,
+  `/message`, `/providers`, `/qec/simulate`, `/qec/decode-syndrome`,
+  `/qec/bb-decoder`, `/qlogos/{path}` + the root `/health`.
+- `/gateway/health` returns `local_simulator` + 20 qubit caps + the
+  `GATEWAY_API_KEY`-gated `/gateway/config` endpoint stays 403 without
+  a Bearer token (constant-time `hmac.compare_digest` path).
+- Dev-only artefact: had to recreate the venv because the bundled one
+  had a shebang from a different `eunmin` user account — `rm -rf venv
+  && /usr/bin/python3 -m venv venv && pip install -e . uvicorn fastapi`
+  restored a working install.
+
 ## 2026-05-11 — v1.3.0 release artifacts staged on S3 + iOS pairing UI shipped
 
 This session prepared the qbridge-gateway 1.3.0 release for distribution
