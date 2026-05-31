@@ -1,3 +1,14 @@
+## [docs] - 2026-05-31 — Honesty-First + Legal Integrity Gate 엔지니어링 표준 채택
+
+SwiftQuantum 생태계 전반에 **Honesty-First 원칙 + Legal Integrity Gate(L1~L4)** 를
+엔지니어링 표준으로 채택. 본 프로젝트(Q-Bridge 게이트웨이 에이전트) 적용:
+- **L1 지수 IP 분리 · L2 시장데이터 라이선스/스크레이핑 금지**: 시장·증권 데이터 표면 없음 → **해당 없음(N/A)**.
+- **L3 비-자문 게이트**: 예측/전망/추천/보장/매수/매도 의미 0건.
+- **L4 표시·광고 무결**: 검증 불가 통계·과장 0건. 시뮬레이션은 시뮬레이션으로 명시.
+- **인용 정직성**: 날조 출처/숫자 0건. · **8-locale 패리티**: en/ko/ja/zh-Hans/zh-Hant/de/fr/es 확장 가능.
+
+이번 세션 변경: **문서만**(코드/런타임 0). 다른 앱 영향 0.
+
 ## v1.5.1 — 2026-05-23 — `/health` alias for sq-unified-alb parity (9/9 health matrix)
 
 **Why:** `qbridge-api.swiftquantum.tech/health` returned 404 because the gateway only registered `/gateway/health`. The other 8 `*-api.swiftquantum.tech` services on sq-unified-alb all expose `/health` directly, leaving qbridge-api as the only host failing the production health probe (8/9 → 9/9 ask).
