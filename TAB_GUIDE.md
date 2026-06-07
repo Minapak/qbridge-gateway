@@ -6,11 +6,11 @@
 
 ## Service Information
 
-- **Service**: Q-Bridge Gateway Agent v1.3.0
+- **Service**: Q-Bridge Gateway Agent v1.5.1
 - **Framework**: FastAPI
 - **Port**: 8090 (default)
 - **Protocol**: SwiftQuantum Gateway Protocol v1.0
-- **Base URL**: `http://localhost:8090`
+- **Base URL**: `http://localhost:8090` (production: `https://qbridge-api.swiftquantum.tech`, AWS ECS Fargate)
 - **CLI**: `qbridge-gateway start --config=config.json`
 - **License**: MIT
 
@@ -24,9 +24,9 @@ Basic gateway operations -- health check, backend discovery, and provider listin
 
 | Action | Method | URL | Auth |
 |--------|--------|-----|------|
-| Health check (uptime, device, protocol version) | GET | `/gateway/health` | No |
-| List available quantum backends | GET | `/gateway/backends` | No |
-| List provider information | GET | `/gateway/providers` | No |
+| Health check (uptime, device, protocol version) | GET | `/gateway/health` (+ `/health` alias) | No (public) |
+| List available quantum backends | GET | `/gateway/backends` | Yes |
+| List provider information | GET | `/gateway/providers` | Yes |
 
 ### Health Response Fields
 
@@ -195,9 +195,21 @@ A unified endpoint for handling any SwiftQuantum Gateway Protocol message. Dispa
 
 ---
 
-## Section 6: Auth & Rate Limiting (2026-04-06)
+## Section 5b: Q-Logos Backend Proxy (v1.4.0)
 
-All endpoints now require Bearer token authentication via the `GatewayAuthRateLimitMiddleware`.
+A pass-through proxy that forwards requests to the Q-Logos backend (`QLOGOS_BACKEND_URL`, prod `https://qlogos-api.swiftquantum.tech`).
+
+### API Endpoints
+
+| Action | Method | URL | Auth |
+|--------|--------|-----|------|
+| Proxy to Q-Logos backend | GET/POST/PUT/PATCH/DELETE | `/gateway/qlogos/{path:path}` | Yes |
+
+---
+
+## Section 6: Auth & Rate Limiting
+
+All endpoints require Bearer token authentication via the `GatewayAuthRateLimitMiddleware`, except the public paths `/gateway/health`, `/docs`, and `/openapi.json`. (When `GATEWAY_API_KEY` is empty the gateway runs in dev mode with auth disabled.)
 
 ### Authentication
 
@@ -216,9 +228,9 @@ All endpoints now require Bearer token authentication via the `GatewayAuthRateLi
 
 ### CORS Policy
 
-- **Allowed origins**: swiftquantum.tech domains only (previously `["*"]`)
+- **Allowed origins**: swiftquantum.tech domains (+ localhost) only (previously `["*"]`)
 - **Allowed methods**: GET, POST, OPTIONS
-- **Blocked methods**: PUT, DELETE, PATCH
+- **Blocked methods**: PUT, DELETE, PATCH (at the CORS layer; the `/gateway/qlogos` proxy still accepts these server-side)
 
 ---
 
@@ -226,7 +238,7 @@ All endpoints now require Bearer token authentication via the `GatewayAuthRateLi
 
 | # | Method | URL | Description |
 |---|--------|-----|-------------|
-| 1 | GET | `/gateway/health` | Health check |
+| 1 | GET | `/gateway/health` (+ `/health` alias) | Health check |
 | 2 | GET | `/gateway/backends` | List backends |
 | 3 | GET | `/gateway/providers` | List providers |
 | 4 | POST | `/gateway/execute` | Execute circuit |
@@ -236,4 +248,5 @@ All endpoints now require Bearer token authentication via the `GatewayAuthRateLi
 | 8 | POST | `/gateway/qec/simulate` | QEC simulation |
 | 9 | POST | `/gateway/qec/decode-syndrome` | Syndrome decode |
 | 10 | POST | `/gateway/qec/bb-decoder` | BB code decoder |
-| 11 | POST | `/gateway/message` | Protocol message |
+| 11 | ANY | `/gateway/qlogos/{path:path}` | Q-Logos backend proxy |
+| 12 | POST | `/gateway/message` | Protocol message |

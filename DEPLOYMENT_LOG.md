@@ -98,9 +98,11 @@ session; 0, 1, 6, 7, 9 require user PyPI credentials).
 
 | 항목 | 값 |
 |------|-----|
-| 플랫폼 | 로컬 서버 / Docker (독립 실행) |
-| 기본 포트 | 8765 |
-| 프로토콜 | HTTP REST + WebSocket + gRPC |
+| 플랫폼 | AWS ECS Fargate (`swiftquantum-production-cluster`, ap-northeast-2) — v1.5.0부터 프로덕션 LIVE. 로컬/Docker 독립 실행도 가능 |
+| 기본 포트 | 8090 |
+| 프로토콜 | FastAPI REST (`/gateway/*`) + Q-Logos 백엔드 프록시 |
+| 이미지 | ECR `swiftquantum/qbridge-gateway` (ARM64, 256 CPU / 512 MB, 1 task) |
+| ALB | `sq-unified-alb` 타깃그룹 `uni-qbridge-gw-tg` (port 8090, healthcheck `/gateway/health`), 리스너 룰 priority 21 → `qbridge-api.swiftquantum.tech` |
 | 패키지 | `pip install -e .` (pyproject.toml 기반) |
 | CI/CD | GitHub Actions (ci.yml: Python 3.10/3.11/3.12 매트릭스) |
 | 연동 | SwiftQuantumBackend → Gateway Agent → 양자 백엔드 |
@@ -153,15 +155,15 @@ session; 0, 1, 6, 7, 9 require user PyPI credentials).
 - [ ] 패키지 설치: `pip install -e .`
 - [ ] 의존성 확인: `pip install -r requirements.txt`
 - [ ] 문법 검증: `python3 -c "from gateway_agent.server import app"`
-- [ ] 로컬 서버 시작 테스트: `python3 -m gateway_agent.cli serve --port 8765`
-- [ ] `/gateway/health` 엔드포인트 응답 확인
+- [ ] 로컬 서버 시작 테스트: `python3 -m gateway_agent.cli start --port 8090`
+- [ ] `/gateway/health` (및 `/health` alias) 엔드포인트 응답 확인
 - [ ] QEC 엔드포인트 테스트: `POST /gateway/qec/simulate`
-- [ ] `device_config.yaml` 디바이스 설정 확인
+- [ ] `config.json` 디바이스 설정 확인
 
 ### 배포 후
 - [ ] 서버 프로세스 실행 확인: `ps aux | grep gateway_agent`
-- [ ] 포트 리스닝 확인: `lsof -i :8765`
-- [ ] 헬스 체크: `curl http://localhost:8765/gateway/health`
+- [ ] 포트 리스닝 확인: `lsof -i :8090`
+- [ ] 헬스 체크: `curl http://localhost:8090/gateway/health`
 - [ ] SwiftQuantumBackend에서 연동 확인: custom provider 상태 체크
 
 ### 롤백
@@ -171,17 +173,17 @@ git checkout <PREVIOUS_COMMIT>
 pip install -e .
 # 서버 재시작
 pkill -f gateway_agent
-python3 -m gateway_agent.cli serve --port 8765 &
+python3 -m gateway_agent.cli start --port 8090 &
 ```
 
 ---
 
 ## 주요 교훈
 
-1. **Gateway Agent는 독립 프로세스** — ECS가 아닌 별도 서버/컨테이너에서 실행, SwiftQuantumBackend의 custom provider로 연결
-2. **포트 설정 일치** — Gateway Agent 포트(8765)와 SwiftQuantumBackend `backend_config.json`의 `endpoint_url` 포트가 일치해야 함
+1. **배포 형태 진화** — 초기에는 독립 프로세스(별도 서버/컨테이너)로 운영했으나, v1.5.0(2026-05-19)부터 ECS Fargate 프로덕션 서비스(`qbridge-gateway-service`)로 전환. 로컬/Docker 독립 실행도 여전히 가능
+2. **포트 설정 일치** — Gateway Agent 포트(8090)와 SwiftQuantumBackend `backend_config.json`의 `endpoint_url` 포트가 일치해야 함
 3. **MessageType 추가 시 양쪽 동기화** — `protocol.py`에 새 MessageType 추가 시, `server.py`의 `handle_message()`에도 라우팅 추가 필수
-4. **gRPC와 REST 동시 지원** — 클라이언트별로 REST 또는 gRPC 선택 가능, 둘 다 테스트 필요
+4. **FastAPI REST 표면** — 모든 엔드포인트는 `/gateway/*` 하위 REST + Q-Logos 프록시(`/gateway/qlogos/{path}`)로 노출
 5. **LocalSimulator 한계** — 큐빗 20개 이상 시뮬레이션은 메모리 제한에 주의
 
 ## 2026-05-17 — v1.4.0 code shipped (manual deploy required)
@@ -206,3 +208,20 @@ ECS service brought up for the first time. Steps performed:
      reaches the production Q-Logos backend automatically
 
 Smoke tests post-deploy: /gateway/health, /gateway/backends both 200.
+
+## 2026-05-23 — v1.5.1 `/health` alias deploy (sq-unified-alb 9/9 parity)
+
+`qbridge-api.swiftquantum.tech/health` returned 404 because only
+`/gateway/health` was registered, leaving qbridge-api the only host
+failing the sq-unified-alb health matrix (8/9 → 9/9 ask).
+
+  1. Added a second `@app.get("/health")` decorator on the existing
+     `health_check()` handler (same payload as `/gateway/health`).
+  2. Image `qbridge-gateway:7639a57-20260523-121027-health-alias` pushed
+     → ECS task def revision `qbridge-gateway:2`, service redeployed.
+
+Live verification 2026-05-23: `curl -m 6 https://qbridge-api.swiftquantum.tech/health`
+→ 200 with full JSON body. Production 9/9 health matrix green.
+
+Note: `/health` alias is intentionally NOT in `PUBLIC_PATHS` (only
+`/gateway/health`, `/docs`, `/openapi.json`).

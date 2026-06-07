@@ -7,23 +7,27 @@ Self-hosted quantum hardware gateway for researchers. The Gateway Agent is a sta
 The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum platform. Researchers run this agent alongside their quantum hardware, and the agent handles circuit execution, transpilation, job management, and health monitoring through a uniform API surface.
 
 **Key Features:**
-- 10 REST API endpoints conforming to the SwiftQuantum Gateway Protocol (including QEC delegation)
+- 13 REST API endpoints conforming to the SwiftQuantum Gateway Protocol (including QEC delegation and a Q-Logos backend proxy)
 - Pluggable `DeviceInterface` for connecting any quantum hardware
 - Built-in `LocalSimulator` for testing and development
 - JSON/YAML configuration with `${ENV_VAR}` placeholder resolution
 - CLI tool for server management, status checking, and cloud registration
-- Docker support for containerized deployment
-- CORS support for cross-origin access
+- Docker support for containerized deployment (production runs on AWS ECS Fargate)
+- Bearer-token auth + sliding-window rate limiting + restricted CORS
 
 ---
 
-## Recent Session Changes (2026-04-06)
+## Recent Session Changes (v1.5.1, 2026-05-23)
 
+- **Production LIVE on AWS ECS Fargate** since v1.5.0 (2026-05-19), region ap-northeast-2
+- **`/health` alias** added (second decorator on `health_check`) so `qbridge-api` passes the 9/9 sq-unified-alb health matrix; verified 200 on 2026-05-23
+- **Q-Logos backend proxy** (`ANY /gateway/qlogos/{path:path}`) pass-through added in v1.4.0
 - **GatewayAuthRateLimitMiddleware**: Bearer token auth + sliding-window rate limiter (60 req/min default)
-- **CORS restricted**: `["*"]` → swiftquantum.tech domains only
+- **CORS restricted**: `["*"]` → swiftquantum.tech domains (+ localhost) only
 - **allow_methods**: GET/POST/OPTIONS only
-- **GATEWAY_API_KEY**: Env var + config file support
+- **GATEWAY_API_KEY**: Env var + config file support; disabled (dev mode) when key empty
 - **hmac.compare_digest**: Constant-time comparison for security
+- **PUBLIC_PATHS** (no auth): `/gateway/health`, `/docs`, `/openapi.json`
 
 ---
 
@@ -110,20 +114,22 @@ curl http://localhost:8090/gateway/health
 
 ## Endpoint Documentation
 
-The Gateway Agent exposes 10 REST API endpoints under the `/gateway/` prefix:
+The Gateway Agent exposes 13 REST API endpoints under the `/gateway/` prefix:
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/gateway/health` | GET | Health check with uptime, device status, and protocol version |
+| `/gateway/health` (+ `/health` alias) | GET | Health check with uptime, device status, and protocol version |
 | `/gateway/backends` | GET | List available quantum backends with qubit count, gates, and status |
 | `/gateway/execute` | POST | Execute a quantum circuit on the device |
 | `/gateway/transpile` | POST | Transpile a circuit for device-native gates |
 | `/gateway/job/{job_id}` | GET | Get job status and results by job ID |
+| `/gateway/job/{job_id}/cancel` | POST | Cancel a running job |
 | `/gateway/providers` | GET | List provider information (type, technology, backends) |
 | `/gateway/message` | POST | Handle generic gateway protocol messages |
 | `/gateway/qec/simulate` | POST | Full QEC simulation (surface/color codes, MWPM/Union-Find/Lookup decoders) |
 | `/gateway/qec/decode-syndrome` | POST | Single syndrome measurement decoding |
 | `/gateway/qec/bb-decoder` | POST | BB Code qLDPC decoder (4 families: bb_72_12_6, bb_90_8_10, bb_144_12_12, bb_288_12_18) |
+| `/gateway/qlogos/{path:path}` | ANY | Q-Logos backend pass-through proxy (GET/POST/PUT/PATCH/DELETE) |
 
 ### POST /gateway/execute
 
@@ -266,20 +272,35 @@ qbridge-gateway register --url API_URL [--token TOKEN] [--config PATH]
 
 ---
 
+## Production Deployment (AWS ECS Fargate)
+
+The gateway runs in production on **AWS ECS Fargate** (LIVE since v1.5.0, 2026-05-19).
+
+- **Region / account**: ap-northeast-2 / 470485006174
+- **Cluster**: `swiftquantum-production-cluster`
+- **ECR repo**: `swiftquantum/qbridge-gateway` (ARM64, 256 CPU / 512 MB, 1 task)
+- **ECS service**: `qbridge-gateway-service` · task def `qbridge-gateway:2`
+- **ALB**: `sq-unified-alb` → target group `uni-qbridge-gw-tg` (port 8090), healthcheck `/gateway/health`, listener rule priority 21 for host `qbridge-api.swiftquantum.tech` (the `qbridge.swiftquantum.tech` host serves the web app via `uni-bridge-web-tg`)
+- **Logs**: CloudWatch log group `/ecs/qbridge-gateway` (30-day retention)
+- **Env**: `QLOGOS_BACKEND_URL=https://qlogos-api.swiftquantum.tech`
+
+---
+
 ## License
 
 MIT License
 
-## Release Distribution (1.3.0)
+## Release Distribution (1.5.1)
 
-Build artifacts produced by `python3 -m build` are staged on S3:
+Latest released version is **v1.5.1** (2026-05-23). Build artifacts produced by
+`python3 -m build` are staged on S3 (currently the 1.3.0 packaging artifacts):
 
 - `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0-py3-none-any.whl`
 - `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0.tar.gz`
 - `s3://sq-gateway-releases/gateway/latest` (alias for the wheel)
 
 PyPI publish requires the maintainer's API token —
-`twine upload dist/qbridge_gateway-1.3.0*` from
+`twine upload dist/qbridge_gateway-*` from
 `~/Desktop/WORK/qbridge-gateway/`.
 
 iOS / macOS Q-Bridge app pairs with a running gateway agent via

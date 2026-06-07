@@ -1,10 +1,10 @@
 # Gateway Agent Architecture
 
-**Version:** 1.3.0 | **Last Updated:** 2026-03-05
+**Version:** 1.5.1 | **Last Updated:** 2026-05-23
 
 ## Overview
 
-The Gateway Agent is a gRPC-based device gateway that bridges the SwiftQuantum ecosystem with quantum hardware backends. It provides provider discovery, backend management, and job execution capabilities.
+The Gateway Agent is a FastAPI REST device gateway that bridges the SwiftQuantum ecosystem with quantum hardware backends (or simulators). It provides provider discovery, backend management, job execution, QEC delegation, and a Q-Logos backend pass-through proxy. In production it runs on AWS ECS Fargate behind the shared `sq-unified-alb`.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ The Gateway Agent is a gRPC-based device gateway that bridges the SwiftQuantum e
 |  |              Device Configuration                     |    |
 |  |  - JSON/YAML config (config.json or device_config.yaml)|    |
 |  |  - Provider type, endpoint, auth token                |    |
-|  |  - Protocol (REST/gRPC/Qiskit Runtime)                |    |
+|  |  - Protocol (REST)                                    |    |
 |  |  - Qubit count, native gate set, topology             |    |
 |  +------------------------------------------------------+    |
 |                                                              |
@@ -64,7 +64,16 @@ Gateway Agent serves as the computation engine for:
 | `/gateway/providers` | GET | List available quantum providers |
 | `/gateway/backends` | GET | List available backends |
 | `/gateway/execute` | POST | Execute quantum job on backend |
-| `/gateway/submit` | POST | Submit job (alias for execute) |
+| `/gateway/transpile` | POST | Transpile circuit for device-native gates |
+| `/gateway/job/{job_id}` | GET | Get job status and results |
+| `/gateway/job/{job_id}/cancel` | POST | Cancel a running job |
+| `/gateway/qec/simulate` | POST | Full QEC simulation |
+| `/gateway/qec/decode-syndrome` | POST | Single syndrome decoding |
+| `/gateway/qec/bb-decoder` | POST | BB Code qLDPC decoder |
+| `/gateway/qlogos/{path:path}` | ANY | Q-Logos backend pass-through proxy |
+| `/gateway/message` | POST | Generic gateway protocol message |
+
+> Note: there is no `/gateway/submit` endpoint — job submission is done via `/gateway/execute`.
 
 ## Configuration
 
@@ -72,13 +81,13 @@ Gateway Agent serves as the computation engine for:
 ```yaml
 devices:
   - name: "device_name"
-    provider: "ibm"
+    provider: "custom"
     endpoint: "https://..."
     auth_token: "..."
-    protocol: "qiskit_runtime"
-    qubits: 127
-    native_gates: ["id", "rz", "sx", "x", "ecr"]
-    topology: "heavy_hex"
+    protocol: "rest"
+    qubits: 20
+    native_gates: ["h", "x", "y", "z", "cx", "rx", "ry", "rz", "measure"]
+    topology: "full"
 ```
 
 ### Environment Variables (`.env.example`)
@@ -87,19 +96,40 @@ devices:
 - `LOG_LEVEL` — Logging level
 - `AUTH_SECRET` — Authentication secret
 
-## Auth & Rate Limiting Middleware (2026-04-06)
+## Auth & Rate Limiting Middleware
 
 ```
 Request → GatewayAuthRateLimitMiddleware
            ├── Bearer token validation (hmac.compare_digest, constant-time)
            ├── Sliding-window rate limiter (60 req/min default, configurable)
-           └── CORS: swiftquantum.tech domains only, GET/POST/OPTIONS
+           └── CORS: swiftquantum.tech domains (+ localhost) only, GET/POST/OPTIONS
 ```
 
-- **GATEWAY_API_KEY**: Loaded from environment variable or config file
+- **GATEWAY_API_KEY**: Loaded from environment variable or config file; auth disabled (dev mode) when empty
 - **Rate limit**: 60 requests/minute default, configurable per deployment
-- **CORS**: Restricted from `["*"]` to swiftquantum.tech production domains
-- **Allowed methods**: GET, POST, OPTIONS only (PUT/DELETE/PATCH blocked)
+- **CORS**: Restricted from `["*"]` to swiftquantum.tech production domains (+ localhost)
+- **Allowed methods**: GET, POST, OPTIONS only (CORS)
+- **PUBLIC_PATHS** (no auth): `/gateway/health`, `/docs`, `/openapi.json` (note: the `/health` alias is not in PUBLIC_PATHS)
+
+## Production Deployment (AWS ECS Fargate)
+
+Production has run on AWS ECS Fargate since v1.5.0 (2026-05-19), region ap-northeast-2, account 470485006174.
+
+```
+qbridge-api.swiftquantum.tech ──▶ sq-unified-alb (listener rule priority 21)
+                                       │
+                                       ▼  uni-qbridge-gw-tg (port 8090, hc /gateway/health)
+                                  ECS service qbridge-gateway-service
+                                  (cluster swiftquantum-production-cluster)
+                                  task def qbridge-gateway:2 · ARM64 256 CPU / 512 MB · 1 task
+                                       │  image: ECR swiftquantum/qbridge-gateway
+                                       ▼
+                                  CloudWatch /ecs/qbridge-gateway (30d)
+```
+
+- The `qbridge.swiftquantum.tech` host routes the web app via `uni-bridge-web-tg`.
+- v1.5.1 added a `/health` alias so `qbridge-api` passes the 9/9 sq-unified-alb health matrix (verified 200 on 2026-05-23).
+- Env: `QLOGOS_BACKEND_URL=https://qlogos-api.swiftquantum.tech` (used by the `/gateway/qlogos/{path}` proxy).
 
 ---
 
