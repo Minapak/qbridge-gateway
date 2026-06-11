@@ -155,7 +155,7 @@ ecosystem node #2). See `MONITORING.md` for signals and
 | Region / Account | `ap-northeast-2` / `470485006174` |
 | Cluster | `swiftquantum-production-cluster` |
 | Service | `qbridge-gateway-service` |
-| Task def | `qbridge-gateway:2` (ARM64, 256 CPU / 512 MB, 1 task) |
+| Task def | `qbridge-gateway:4` (ARM64, 256 CPU / 512 MB, 1 task; v1.4.0 real numpy compute) |
 | ECR repo | `swiftquantum/qbridge-gateway` |
 | Host | `qbridge-api.swiftquantum.tech` |
 | ALB / TG | `sq-unified-alb` (shared SPOF) / `uni-qbridge-gw-tg` :8090 |
@@ -163,17 +163,37 @@ ecosystem node #2). See `MONITORING.md` for signals and
 | Log group | `/ecs/qbridge-gateway` (30d) |
 | Key env | `QLOGOS_BACKEND_URL=https://qlogos-api.swiftquantum.tech`, `GATEWAY_API_KEY` |
 
+## Real compute (v1.4.0, since 2026-06-11)
+
+The gateway now does **real numerical compute** — it is the delegation target
+for the Q-Bridge backend's BB/QEC work (bridge-service reaches it via
+`QUANTUMBRIDGE_GATEWAY_URL`):
+- `/gateway/execute` runs a real **numpy** dense statevector simulator
+  (seeded RNG, reproducible). **Capped at 20 qubits** (`MAX_STATEVECTOR_QUBITS`;
+  20-qubit complex128 statevector ≈16 MB) — the main driver of
+  `MemoryUtilization`.
+- `/gateway/qec/simulate` + `/decode-syndrome` run a real seeded
+  repetition-code Monte-Carlo (CPU-bound; scales with `shots × num_cycles`).
+- `/gateway/qec/bb-decoder` is a cheap **deterministic analytic** estimate
+  (no Monte-Carlo) — explicitly NOT a full BP-OSD sim.
+- Hard dependency: **`numpy>=1.24`**. A missing/broken numpy import breaks
+  execute + QEC — check logs.
+
 ## Versioning note (read before reasoning about "current version")
 
 There is known version drift in this repo:
-- `pyproject.toml`, `gateway_agent/__init__.py`, FastAPI app version, and
-  egg-info all say **1.3.0**.
-- `CHANGELOG.md` / `DEPLOYMENT_LOG.md` record releases through **v1.5.1
-  (2026-05-23)** — this is the **real latest release** and what runs in prod.
+- `pyproject.toml` now says **1.4.0** (the real-compute release);
+  `gateway_agent/__init__.py` + FastAPI app version + egg-info still lag at
+  **1.3.0**.
+- `CHANGELOG.md` / `DEPLOYMENT_LOG.md` record the **v1.4.0 real-compute deploy
+  (2026-06-11, ECS `qbridge-gateway:4`)** — this is the **real latest release**
+  and what runs in prod. (Older CHANGELOG entries labelled v1.5.x predate this
+  re-baselining; the deployed task-def revision `:4` is authoritative.)
 - `/gateway/health` returns a hardcoded `"version": "1.0.0"`.
 
-Trust CHANGELOG/DEPLOYMENT_LOG and the deployed ECR image tag, not the
-in-code version strings or the health payload.
+Trust CHANGELOG/DEPLOYMENT_LOG and the deployed ECR image tag / task-def
+revision (`qbridge-gateway:4`), not the in-code version strings or the health
+payload.
 
 ## Build & push image
 
@@ -219,10 +239,17 @@ curl -m 6 -i https://qbridge-api.swiftquantum.tech/health
 
 # Auth enforced (non-public path without token → 401/403)
 curl -m 6 -i https://qbridge-api.swiftquantum.tech/gateway/backends
+
+# Real-compute smoke: Bell circuit → counts over {00,11} only, ~50/50
+curl -m 6 -s -X POST https://qbridge-api.swiftquantum.tech/gateway/execute \
+  -H "Authorization: Bearer $GATEWAY_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"circuit":{"num_qubits":2,"gates":[{"gate":"h","qubits":[0]},{"gate":"cx","qubits":[0,1]}]},"shots":1024}'
 ```
 
-Never ship an image older than v1.5.1 — earlier builds lack the `/health`
-alias and drop the host to 8/9.
+Never ship an image that lacks the `/health` alias (earlier builds drop the
+host to 8/9 on the sq-unified-alb matrix) or that predates the v1.4.0
+real-compute build (task def `qbridge-gateway:4`) — older images return mocked
+execute/QEC output.
 
 ## Configuration & secrets
 
@@ -263,7 +290,9 @@ aws ecs update-service --cluster swiftquantum-production-cluster \
 
 Note the rate limiter is **in-memory per task** — with >1 task, the
 effective per-client limit is multiplied and is not shared across tasks.
-Memory is 512 MB; watch `MemoryUtilization` before adding load.
+Memory is 512 MB; watch `MemoryUtilization` before adding load — the real
+statevector engine allocates up to ~16 MB per 20-qubit circuit, and QEC
+Monte-Carlo is CPU-bound in `shots × num_cycles`.
 
 ## Routine tasks
 

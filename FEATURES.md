@@ -1,6 +1,6 @@
 # Gateway Agent Features
 
-**Version:** 1.5.1 | **Last Updated:** 2026-05-23
+**Version:** 1.4.0 (real numpy compute) | **Last Updated:** 2026-06-11
 
 ## Core Features
 
@@ -16,7 +16,8 @@
 - Native gate set reporting
 
 ### Job Execution
-- Quantum circuit execution on the connected backend (`/gateway/execute`)
+- **Real quantum circuit execution** on the connected backend (`/gateway/execute`). The built-in `LocalSimulator` is a real dense numpy statevector engine: it applies real gate unitaries (H/X/Y/Z/S/T/RX/RY/RZ, CX/CZ/SWAP/CCX), computes Born-rule probabilities, and samples outcomes with a **seeded** numpy RNG (same circuit + shots → identical counts). Capped at **20 qubits**; unsupported gates raise an error rather than fabricating output. A Bell circuit yields a reproducible ~50/50 over `{00, 11}`.
+- **Real transpilation** (`/gateway/transpile`): a basis-decomposition pass (SWAP → 3×CX, etc.) reporting real gate counts and circuit depth — not a no-op passthrough.
 - Job status monitoring, result retrieval, and cancellation
 - REST API over FastAPI
 
@@ -29,12 +30,12 @@
 - `${ENV_VAR}` placeholder resolution at startup
 - Dynamic device discovery
 
-### QEC Delegation (v8.1.0)
-- QEC simulation: Surface/color code with MWPM, Union-Find, Lookup decoders
-- Syndrome decoding: Single syndrome measurement analysis with correction proposals
-- BB Code decoding: Bivariate bicycle qLDPC decoder (4 code families)
+### QEC Delegation (real compute, v1.4.0)
+- **QEC simulation**: real seeded distance-d **repetition-code Monte-Carlo** (`/gateway/qec/simulate`). Injects X errors at rate `p` over `num_cycles` rounds, computes parity-check syndromes, and decodes via MWPM / Union-Find (min-weight pairing of adjacent defects) or Lookup (majority vote), measuring the **empirical** logical error rate. All `random.*` fudge removed; reproducible via a seeded numpy RNG.
+- **Syndrome decoding**: deterministic per-stabilizer decode (`/gateway/qec/decode-syndrome`) with correction proposals — a genuine decode, not a random draw.
+- **BB Code decoding**: honest, **deterministic analytic** qLDPC threshold estimate (`/gateway/qec/bb-decoder`) for 4 families (bb_72_12_6, bb_90_8_10, bb_144_12_12, bb_288_12_18). Uses `p_L = 0.03·(p/p_th)^ceil(d/2)` accumulated over rounds; the response carries `method = analytic_threshold_estimate` and a `notes` field stating it is **NOT** a full BP-OSD Monte-Carlo. Full-name-only validation (short forms → 400).
 - 6 protocol MessageTypes for QEC communication via `/gateway/message`
-- Automatic computation delegation from the Fargate backend
+- The Q-Bridge backend (bridge-service) delegates this compute to the gateway via `QUANTUMBRIDGE_GATEWAY_URL`
 
 ## API Reference
 
@@ -47,9 +48,9 @@
 | `/gateway/transpile` | POST | Transpile circuit | Yes |
 | `/gateway/job/{job_id}` | GET | Job status | Yes |
 | `/gateway/job/{job_id}/cancel` | POST | Cancel job | Yes |
-| `/gateway/qec/simulate` | POST | QEC simulation | Yes |
-| `/gateway/qec/decode-syndrome` | POST | Syndrome decoding | Yes |
-| `/gateway/qec/bb-decoder` | POST | BB Code decoder | Yes |
+| `/gateway/qec/simulate` | POST | Real seeded repetition-code Monte-Carlo | Yes |
+| `/gateway/qec/decode-syndrome` | POST | Deterministic single-syndrome decode | Yes |
+| `/gateway/qec/bb-decoder` | POST | Honest analytic BB qLDPC estimate (not BP-OSD) | Yes |
 | `/gateway/qlogos/{path}` | ANY | Q-Logos proxy | Yes |
 | `/gateway/message` | POST | Protocol message | Yes |
 
@@ -80,11 +81,12 @@ interface; the gateway itself speaks REST.
 - hmac.compare_digest constant-time token comparison
 - Public paths (no auth): `/gateway/health`, `/docs`, `/openapi.json`
 
-### Production Deployment (v1.5.0+)
-- LIVE on AWS ECS Fargate (ap-northeast-2) since 2026-05-19
-- Cluster `swiftquantum-production-cluster`, service `qbridge-gateway-service`, task def `qbridge-gateway:2` (ARM64, 256 CPU / 512 MB)
+### Production Deployment (v1.4.0 real compute)
+- LIVE on AWS ECS Fargate (ap-northeast-2); v1.4.0 real-compute build deployed 2026-06-11
+- Cluster `swiftquantum-production-cluster`, service `qbridge-gateway-service`, task def `qbridge-gateway:4` (ARM64, 256 CPU / 512 MB)
 - Behind `sq-unified-alb` (target group `uni-qbridge-gw-tg`, port 8090) for host `qbridge-api.swiftquantum.tech`
-- v1.5.1 added `/health` alias for the 9/9 sq-unified-alb health matrix
+- `/health` alias present for the 9/9 sq-unified-alb health matrix
+- Hard dependency: `numpy>=1.24` (statevector + QEC compute)
 
 ## Integration Points
 

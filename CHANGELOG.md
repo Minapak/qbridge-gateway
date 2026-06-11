@@ -1,3 +1,65 @@
+## v1.4.0 — 2026-06-11 — Real numpy statevector sim + real QEC Monte-Carlo + honest BB analytic (ECS `qbridge-gateway:4`)
+
+The gateway stopped faking quantum compute. Every `/gateway/execute` and
+`/gateway/qec/*` path now runs genuine numerical physics instead of the old
+pattern-matched / `random.*` mocks. Shipped at git HEAD `5d294da`, pyproject
+`1.4.0`, deployed as ECS task def `qbridge-gateway:4` (ARM64) on
+`qbridge-api.swiftquantum.tech`.
+
+**What shipped:**
+
+- **`gateway_agent/device_interface.py` — `LocalSimulator` is now a real
+  dense statevector engine.** The previous gate-name PATTERN-MATCHING +
+  random-noise mock is gone. It builds the exact complex statevector on
+  `|0…0⟩` from real numpy gate unitaries — H/X/Y/Z/S/Sdg/T/Tdg/RX/RY/RZ
+  (with angle), CX/CNOT, CZ, SWAP, CCX/Toffoli, plus measure/barrier/id
+  no-ops — computes Born-rule `|amplitude|²` probabilities, and samples
+  `shots` outcomes with a numpy RNG **seeded deterministically** from the
+  SHA-256 of a canonical JSON encoding of `{circuit, shots}` (same circuit +
+  shots → identical counts, reproducible). Little-endian bit ordering (qubit
+  0 = LSB). Capped at **20 qubits** (`MAX_STATEVECTOR_QUBITS`; a 20-qubit
+  complex128 statevector is ≈16 MB). Unsupported gates raise `ValueError`
+  (surfaced as an error — no fabrication). Verified: a Bell circuit
+  (`H 0; CX 0,1`) yields ~50/50 over `{00, 11}` only, byte-for-byte
+  reproducible across runs.
+- **`transpile` is now a real basis-decomposition pass.** Was an identity
+  no-op. It decomposes composite gates into the native basis (SWAP → 3×CX,
+  Sdg/Tdg → RZ(±π/2 ·, ±π/4), CNOT → CX) and computes **real** gate counts
+  (single-/two-qubit), basis-gate list, and circuit depth via greedy
+  per-qubit layering — not a fabricated metric.
+- **`gateway_agent/server.py` QEC `/gateway/qec/simulate` + `/gateway/qec/decode-syndrome`
+  now run a real distance-d repetition-code Monte-Carlo.** `_qec_monte_carlo`
+  injects X errors at rate `p` (× a noise-model multiplier) on each of `d`
+  data qubits across `num_cycles` rounds with a **seeded** numpy RNG,
+  computes the `d−1` parity-check syndromes (`s_i = e_i ⊕ e_{i+1}`), and
+  decodes — MWPM/union_find as minimum-weight pairing of adjacent syndrome
+  defects on the 1-D chain, or lookup as majority-vote — then measures the
+  empirical logical-X error rate (odd residual parity = failure). All
+  `random.gauss`/`random.uniform` fudge removed. `method` =
+  `monte_carlo_repetition_code_seeded`. `decode-syndrome` is a deterministic
+  per-stabilizer decode (`method = deterministic_repetition_decode`).
+- **`/gateway/qec/bb-decoder` is an honest, DETERMINISTIC analytic qLDPC
+  threshold estimate** for the 4 Bivariate-Bicycle families (`bb_72_12_6`,
+  `bb_90_8_10`, `bb_144_12_12`, `bb_288_12_18`). Logical error rate uses the
+  standard sub-threshold scaling `p_L = 0.03·(p/p_th)^ceil(d/2)` accumulated
+  over `rounds` (saturating toward 0.5 above threshold). The response carries
+  `method = "analytic_threshold_estimate"` plus a `notes` field that clearly
+  states it is **NOT** a full BP-OSD Monte-Carlo. Example: `bb_144_12_12` at
+  `p=0.001` (bp_osd, d=12, threshold 0.0110) gives a per-round
+  `p_L ≈ 1.6934e-08` (`1.69342e-07` accumulated over 10 rounds). Full-name-only
+  validation kept (short forms / unknown families → 400).
+- **numpy added** as a hard dependency (`numpy>=1.24` in both
+  `requirements.txt` and `pyproject.toml`). All bare `random.*` removed from
+  compute paths.
+- **Tests: 221 passing.** Five tests that asserted the old mock behaviour were
+  updated to assert the real statevector / Monte-Carlo behaviour.
+
+Unchanged: auth middleware, sliding-window rate limiting, `/gateway/health`
+(+ `/health` alias), `/gateway/backends`, `/gateway/providers`, the
+`/gateway/qlogos/{path}` proxy, and the `/gateway/message` dispatcher.
+
+---
+
 ## [docs] - 2026-05-31 — Honesty-First + Legal Integrity Gate 엔지니어링 표준 채택
 
 SwiftQuantum 생태계 전반에 **Honesty-First 원칙 + Legal Integrity Gate(L1~L4)** 를

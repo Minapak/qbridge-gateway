@@ -6,7 +6,7 @@
 
 ## Service Information
 
-- **Service**: Q-Bridge Gateway Agent v1.5.1
+- **Service**: Q-Bridge Gateway Agent v1.4.0 (real numpy compute, ECS `qbridge-gateway:4`)
 - **Framework**: FastAPI
 - **Port**: 8090 (default)
 - **Protocol**: SwiftQuantum Gateway Protocol v1.0
@@ -43,12 +43,20 @@ Basic gateway operations -- health check, backend discovery, and provider listin
 
 Endpoints for executing quantum circuits on the connected device and transpiling circuits for device-native gates.
 
+> **Real compute (v1.4.0):** `/gateway/execute` runs a real dense numpy
+> statevector engine — real gate unitaries → Born-rule probabilities →
+> seeded RNG sampling (same circuit + shots = identical counts), capped at
+> **20 qubits**, unsupported gates error out (no fabrication). A Bell circuit
+> yields a reproducible ~50/50 over `{00, 11}`. `/gateway/transpile` is a real
+> basis-decomposition pass (SWAP → 3×CX, etc.) returning real gate-count /
+> depth metrics.
+
 ### API Endpoints
 
 | Action | Method | URL | Auth |
 |--------|--------|-----|------|
-| Execute quantum circuit | POST | `/gateway/execute` | No |
-| Transpile circuit for device | POST | `/gateway/transpile` | No |
+| Execute quantum circuit (real statevector sim) | POST | `/gateway/execute` | No |
+| Transpile circuit (real basis decomposition) | POST | `/gateway/transpile` | No |
 
 ### Execute Request Body
 
@@ -109,17 +117,21 @@ Endpoints for tracking and managing submitted quantum jobs.
 
 ---
 
-## Section 4: QEC Delegation (v8.1.0)
+## Section 4: QEC Delegation (real compute, v1.4.0)
 
-QEC (Quantum Error Correction) simulation endpoints delegated from the SwiftQuantum Engine Service. These run threshold-model QEC decoder simulations locally on the gateway.
+QEC (Quantum Error Correction) endpoints delegated from the Q-Bridge backend (bridge-service, via `QUANTUMBRIDGE_GATEWAY_URL`). Per-endpoint real status:
+
+- **`/gateway/qec/simulate`** — REAL seeded distance-d **repetition-code Monte-Carlo**: inject X errors over rounds → parity-check syndromes → MWPM/union-find/lookup decode → empirical logical error rate. `method = monte_carlo_repetition_code_seeded`. Deterministic for fixed inputs.
+- **`/gateway/qec/decode-syndrome`** — REAL deterministic per-stabilizer decode. `method = deterministic_repetition_decode`.
+- **`/gateway/qec/bb-decoder`** — HONEST deterministic **analytic** threshold estimate, **NOT** a full BP-OSD Monte-Carlo. `method = analytic_threshold_estimate` + a `notes` field saying so.
 
 ### API Endpoints
 
 | Action | Method | URL | Auth |
 |--------|--------|-----|------|
-| Full QEC simulation | POST | `/gateway/qec/simulate` | No |
-| Decode single syndrome | POST | `/gateway/qec/decode-syndrome` | No |
-| BB Code qLDPC decoder | POST | `/gateway/qec/bb-decoder` | No |
+| Repetition-code Monte-Carlo QEC sim | POST | `/gateway/qec/simulate` | No |
+| Decode single syndrome (deterministic) | POST | `/gateway/qec/decode-syndrome` | No |
+| BB qLDPC analytic threshold estimate | POST | `/gateway/qec/bb-decoder` | No |
 
 ### QEC Simulate Request Fields
 
@@ -133,15 +145,18 @@ QEC (Quantum Error Correction) simulation endpoints delegated from the SwiftQuan
 
 ### QEC Simulate Response Fields
 
-- `logical_error_rate` -- measured logical error rate
+- `logical_error_rate` -- **empirically measured** logical error rate over the shots
 - `physical_error_rate` -- input physical error rate
 - `success_count` / `failure_count` / `total_shots`
 - `syndrome_history` -- per-cycle syndrome grid with detected errors
 - `avg_decoding_time_ms` -- average decoder time
 - `engine_used` -- "gateway_agent_qec_sim"
+- `method` -- "monte_carlo_repetition_code_seeded"
 - `delegated` -- true (indicates gateway delegation)
 
 ### BB Decoder Code Families
+
+Full names only — short forms / unknown families → **400**.
 
 | Family | n (data qubits) | k (logical qubits) | d (distance) | Encoding Rate |
 |--------|-----------------|---------------------|--------------|---------------|
@@ -150,7 +165,14 @@ QEC (Quantum Error Correction) simulation endpoints delegated from the SwiftQuan
 | `bb_144_12_12` | 144 | 12 | 12 | 8.3% |
 | `bb_288_12_18` | 288 | 12 | 18 | 4.2% |
 
-### BB Decoder Types
+> **Honesty note:** this endpoint returns a **deterministic analytic
+> threshold estimate** (`method = analytic_threshold_estimate`), NOT a full
+> BP-OSD Monte-Carlo — the `notes` field in the response says so. The logical
+> error rate uses `p_L = 0.03·(p/p_th)^ceil(d/2)` accumulated over `rounds`.
+> Example: `bb_144_12_12` at `p=0.001` (decoder `bp_osd`, d=12, p_th=0.0110)
+> → per-round `p_L ≈ 1.6934e-08` (`1.69342e-07` over 10 rounds).
+
+### BB Decoder Types (selects the threshold p_th used in the analytic model)
 
 - `bp_osd` -- Belief Propagation + Ordered Statistics Decoding
 - `mwpm` -- Minimum Weight Perfect Matching

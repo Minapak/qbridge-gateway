@@ -1,5 +1,36 @@
 # Gateway Agent 배포 기록 가이드
 
+## 2026-06-11 — v1.4.0 real-compute deploy (ECS `qbridge-gateway:4`)
+
+Shipped the real-compute build: real numpy statevector simulator + real QEC
+repetition-code Monte-Carlo + honest analytic BB qLDPC estimate. git HEAD
+`5d294da`, pyproject `1.4.0`. All bare `random.*` removed from compute paths;
+`numpy>=1.24` added as a hard dependency. Test suite: **221 passing** (5 tests
+that asserted the old mock behaviour updated to assert the real behaviour).
+
+Steps performed:
+  1. `docker buildx build --platform linux/arm64` → pushed to ECR
+     `swiftquantum/qbridge-gateway` (ARM64).
+  2. Registered a new task def revision → **`qbridge-gateway:4`**, pointing the
+     service at the new image.
+  3. `aws ecs update-service … --force-new-deployment` → rollout to
+     `services-stable`.
+
+Post-deploy verification (2026-06-11):
+  - `GET https://qbridge-api.swiftquantum.tech/gateway/health` → **200**.
+  - **Bell execute live-verified**: `POST /gateway/execute` with `H 0; CX 0,1`
+    returned counts over `{00, 11}` only at ~50/50, reproducible across
+    identical requests (seeded RNG).
+  - `services-stable` reached; 1 ARM64 task healthy on the
+    `uni-qbridge-gw-tg` target group.
+
+Notes:
+  - 20-qubit cap (`MAX_STATEVECTOR_QUBITS`) on the statevector engine;
+    >20 qubits → validation error, no fabricated output.
+  - BB decoder remains an **analytic estimate** (`method =
+    analytic_threshold_estimate`), explicitly NOT a full BP-OSD Monte-Carlo —
+    the `notes` field in the response documents this.
+
 ## 2026-05-23 — verification sweep · gateway local boot OK on dev box
 
 Part of the eleven-project cross-stack verification sweep. No code
@@ -98,10 +129,10 @@ session; 0, 1, 6, 7, 9 require user PyPI credentials).
 
 | 항목 | 값 |
 |------|-----|
-| 플랫폼 | AWS ECS Fargate (`swiftquantum-production-cluster`, ap-northeast-2) — v1.5.0부터 프로덕션 LIVE. 로컬/Docker 독립 실행도 가능 |
+| 플랫폼 | AWS ECS Fargate (`swiftquantum-production-cluster`, ap-northeast-2) — 프로덕션 LIVE, v1.4.0 real-compute 빌드는 `qbridge-gateway:4`(2026-06-11). 로컬/Docker 독립 실행도 가능 |
 | 기본 포트 | 8090 |
-| 프로토콜 | FastAPI REST (`/gateway/*`) + Q-Logos 백엔드 프록시 |
-| 이미지 | ECR `swiftquantum/qbridge-gateway` (ARM64, 256 CPU / 512 MB, 1 task) |
+| 프로토콜 | FastAPI REST (`/gateway/*`) + Q-Logos 백엔드 프록시. compute 경로는 real numpy(statevector + QEC Monte-Carlo) |
+| 이미지 | ECR `swiftquantum/qbridge-gateway` (ARM64, 256 CPU / 512 MB, 1 task), task def `qbridge-gateway:4` |
 | ALB | `sq-unified-alb` 타깃그룹 `uni-qbridge-gw-tg` (port 8090, healthcheck `/gateway/health`), 리스너 룰 priority 21 → `qbridge-api.swiftquantum.tech` |
 | 패키지 | `pip install -e .` (pyproject.toml 기반) |
 | CI/CD | GitHub Actions (ci.yml: Python 3.10/3.11/3.12 매트릭스) |
@@ -184,7 +215,8 @@ python3 -m gateway_agent.cli start --port 8090 &
 2. **포트 설정 일치** — Gateway Agent 포트(8090)와 SwiftQuantumBackend `backend_config.json`의 `endpoint_url` 포트가 일치해야 함
 3. **MessageType 추가 시 양쪽 동기화** — `protocol.py`에 새 MessageType 추가 시, `server.py`의 `handle_message()`에도 라우팅 추가 필수
 4. **FastAPI REST 표면** — 모든 엔드포인트는 `/gateway/*` 하위 REST + Q-Logos 프록시(`/gateway/qlogos/{path}`)로 노출
-5. **LocalSimulator 한계** — 큐빗 20개 이상 시뮬레이션은 메모리 제한에 주의
+5. **LocalSimulator 실연산 + 큐빗 캡** — v1.4.0부터 `LocalSimulator`는 real numpy dense statevector 엔진(mock 아님). dense statevector는 `MAX_STATEVECTOR_QUBITS=20`에서 캡(20큐빗 complex128 ≈16 MB), 21큐빗+는 검증 에러로 거부(날조 출력 없음). 미지원 게이트는 ValueError. QEC도 seeded numpy RNG로 재현 가능
+6. **BB 디코더는 analytic estimate** — `/gateway/qec/bb-decoder`는 결정론적 analytic threshold 추정(`method=analytic_threshold_estimate`)이며 full BP-OSD Monte-Carlo가 아님. 응답 `notes`에 명시. 정직성 유지 필수
 
 ## 2026-05-17 — v1.4.0 code shipped (manual deploy required)
 

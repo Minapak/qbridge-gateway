@@ -17,11 +17,17 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 
 ---
 
-## Recent Session Changes (v1.5.1, 2026-05-23)
+## Recent Session Changes (v1.4.0, 2026-06-11 — real compute)
 
-- **Production LIVE on AWS ECS Fargate** since v1.5.0 (2026-05-19), region ap-northeast-2
-- **`/health` alias** added (second decorator on `health_check`) so `qbridge-api` passes the 9/9 sq-unified-alb health matrix; verified 200 on 2026-05-23
-- **Q-Logos backend proxy** (`ANY /gateway/qlogos/{path:path}`) pass-through added in v1.4.0
+- **Real numpy statevector simulator** (not a mock). `LocalSimulator` builds the exact complex statevector from real gate unitaries (H/X/Y/Z/S/T/RX/RY/RZ, CX/CZ/SWAP/CCX) and samples Born-rule outcomes with a **seeded** numpy RNG (same circuit + shots → identical counts). Capped at **20 qubits**. Unsupported gates raise an error — no fabricated output. A Bell circuit yields a reproducible ~50/50 over `{00, 11}`.
+- **`/gateway/transpile`** is now a real basis-decomposition pass (SWAP→3×CX etc.) with real gate-count / depth analysis (was a no-op).
+- **QEC is real**: `/gateway/qec/simulate` + `/gateway/qec/decode-syndrome` run a seeded distance-d repetition-code Monte-Carlo (inject X errors → parity-check syndromes → MWPM/union-find/lookup decode → empirical logical error rate). All `random.*` removed.
+- **`/gateway/qec/bb-decoder`** is an honest, deterministic **analytic** qLDPC threshold estimate for the 4 BB families — `method = analytic_threshold_estimate`, with a `notes` field stating it is **NOT** a full BP-OSD Monte-Carlo.
+- **numpy>=1.24** added as a hard dependency. **221 tests passing.**
+- Deployed as ECS task def `qbridge-gateway:4` (ARM64) on `qbridge-api.swiftquantum.tech`.
+- **Production LIVE on AWS ECS Fargate** (region ap-northeast-2), behind shared `sq-unified-alb`.
+- **`/health` alias** present (second decorator on `health_check`) so `qbridge-api` passes the 9/9 sq-unified-alb health matrix.
+- **Q-Logos backend proxy** (`ANY /gateway/qlogos/{path:path}`) pass-through.
 - **GatewayAuthRateLimitMiddleware**: Bearer token auth + sliding-window rate limiter (60 req/min default)
 - **CORS restricted**: `["*"]` → swiftquantum.tech domains (+ localhost) only
 - **allow_methods**: GET/POST/OPTIONS only
@@ -126,14 +132,15 @@ The Gateway Agent exposes 13 REST API endpoints under the `/gateway/` prefix:
 | `/gateway/job/{job_id}/cancel` | POST | Cancel a running job |
 | `/gateway/providers` | GET | List provider information (type, technology, backends) |
 | `/gateway/message` | POST | Handle generic gateway protocol messages |
-| `/gateway/qec/simulate` | POST | Full QEC simulation (surface/color codes, MWPM/Union-Find/Lookup decoders) |
-| `/gateway/qec/decode-syndrome` | POST | Single syndrome measurement decoding |
-| `/gateway/qec/bb-decoder` | POST | BB Code qLDPC decoder (4 families: bb_72_12_6, bb_90_8_10, bb_144_12_12, bb_288_12_18) |
+| `/gateway/qec/simulate` | POST | Real seeded repetition-code Monte-Carlo (MWPM/Union-Find/Lookup decoders) |
+| `/gateway/qec/decode-syndrome` | POST | Deterministic single-syndrome decode |
+| `/gateway/qec/bb-decoder` | POST | Honest analytic BB qLDPC threshold estimate (4 families: bb_72_12_6, bb_90_8_10, bb_144_12_12, bb_288_12_18; not a full BP-OSD sim) |
 | `/gateway/qlogos/{path:path}` | ANY | Q-Logos backend pass-through proxy (GET/POST/PUT/PATCH/DELETE) |
 
 ### POST /gateway/execute
 
-Execute a quantum circuit.
+Execute a quantum circuit on the real numpy statevector engine. The Bell
+circuit below produces a reproducible ~50/50 over `{00, 11}` (seeded RNG).
 
 **Request Body:**
 ```json
@@ -267,6 +274,7 @@ qbridge-gateway register --url API_URL [--token TOKEN] [--config PATH]
 | uvicorn | >=0.24.0 | ASGI server |
 | pydantic | >=2.0.0 | Request/response validation |
 | pyyaml | >=6.0 | YAML configuration parsing |
+| numpy | >=1.24.0 | Statevector simulator + QEC Monte-Carlo (real compute) |
 
 **Python:** >=3.10
 
@@ -274,12 +282,12 @@ qbridge-gateway register --url API_URL [--token TOKEN] [--config PATH]
 
 ## Production Deployment (AWS ECS Fargate)
 
-The gateway runs in production on **AWS ECS Fargate** (LIVE since v1.5.0, 2026-05-19).
+The gateway runs in production on **AWS ECS Fargate** (LIVE on AWS ECS Fargate; real-compute build deployed 2026-06-11).
 
 - **Region / account**: ap-northeast-2 / 470485006174
 - **Cluster**: `swiftquantum-production-cluster`
 - **ECR repo**: `swiftquantum/qbridge-gateway` (ARM64, 256 CPU / 512 MB, 1 task)
-- **ECS service**: `qbridge-gateway-service` · task def `qbridge-gateway:2`
+- **ECS service**: `qbridge-gateway-service` · task def `qbridge-gateway:4` (v1.4.0 real numpy compute)
 - **ALB**: `sq-unified-alb` → target group `uni-qbridge-gw-tg` (port 8090), healthcheck `/gateway/health`, listener rule priority 21 for host `qbridge-api.swiftquantum.tech` (the `qbridge.swiftquantum.tech` host serves the web app via `uni-bridge-web-tg`)
 - **Logs**: CloudWatch log group `/ecs/qbridge-gateway` (30-day retention)
 - **Env**: `QLOGOS_BACKEND_URL=https://qlogos-api.swiftquantum.tech`
@@ -290,10 +298,11 @@ The gateway runs in production on **AWS ECS Fargate** (LIVE since v1.5.0, 2026-0
 
 MIT License
 
-## Release Distribution (1.5.1)
+## Release Distribution (1.4.0)
 
-Latest released version is **v1.5.1** (2026-05-23). Build artifacts produced by
-`python3 -m build` are staged on S3 (currently the 1.3.0 packaging artifacts):
+Latest released version is **v1.4.0** (2026-06-11, real numpy compute,
+ECS `qbridge-gateway:4`). Build artifacts produced by `python3 -m build` are
+staged on S3 (currently the 1.3.0 packaging artifacts):
 
 - `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0-py3-none-any.whl`
 - `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0.tar.gz`

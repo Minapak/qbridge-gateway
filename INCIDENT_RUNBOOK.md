@@ -10,7 +10,7 @@ production. Pair with `MONITORING.md` (signals) and `OPS.md` (routine ops).
 | Region / Account | `ap-northeast-2` / `470485006174` |
 | Cluster | `swiftquantum-production-cluster` |
 | Service | `qbridge-gateway-service` |
-| Task def | `qbridge-gateway:2` (ARM64, 256 CPU / 512 MB, 1 task) |
+| Task def | `qbridge-gateway:4` (ARM64, 256 CPU / 512 MB, 1 task; v1.4.0 real numpy compute) |
 | Host | `qbridge-api.swiftquantum.tech` (ALB `sq-unified-alb`, rule prio 21) |
 | Target group | `uni-qbridge-gw-tg` (port 8090, HC `/gateway/health`) |
 | Log group | `/ecs/qbridge-gateway` |
@@ -53,10 +53,15 @@ aws logs tail /ecs/qbridge-gateway --since 20m --region ap-northeast-2
 
 ### A. Health check failing / target unhealthy / 502-503 at the host
 
-Most likely: task crashed, OOM (512 MB is tight), or a bad image rolled out.
+Most likely: task crashed, OOM (512 MB is tight), a bad image rolled out, or a
+**numpy import failure** (v1.4.0 added `numpy>=1.24` as a hard dependency —
+execute + QEC fail to import without it).
 
-1. Check `events` (step 2) and logs (step 4) for crash/OOM/restart loop.
-2. If a recent deploy correlates → **roll back** (see Rollback below).
+1. Check `events` (step 2) and logs (step 4) for crash/OOM/restart loop or
+   `ModuleNotFoundError: numpy` / `ImportError` at boot.
+2. If a recent deploy correlates → **roll back** (see Rollback below). For a
+   numpy import error, rebuild the image with `numpy>=1.24` installed
+   (`requirements.txt` already pins it) and redeploy.
 3. If no deploy, force a fresh task:
    ```bash
    aws ecs update-service --cluster swiftquantum-production-cluster \
@@ -67,13 +72,14 @@ Most likely: task crashed, OOM (512 MB is tight), or a bad image rolled out.
 
 ### B. `/health` returns 404 but `/gateway/health` is 200
 
-This is the exact v1.5.1 regression class. The `/health` alias is a second
-decorator on `health_check()`. If only `/gateway/health` answers, the
-running image predates v1.5.1 (commit `7639a57`/`277e90b`) — the host will
-fail the 9/9 matrix.
+The `/health` alias is a second decorator on `health_check()` (commit
+`7639a57`/`277e90b`). If only `/gateway/health` answers, the running image
+predates that alias — the host will fail the 9/9 matrix.
 
-- Confirm the deployed image tag is v1.5.1 or later.
-- Roll forward to the correct image (do not roll back below v1.5.1).
+- Confirm the deployed image carries the `/health` alias (and is the v1.4.0
+  real-compute build, task def `qbridge-gateway:4`, or later).
+- Roll forward to the correct image (do not roll back to a build without the
+  alias).
 
 ### C. Q-Logos proxy errors (`/gateway/qlogos/*` 5xx / timeouts)
 
@@ -87,6 +93,25 @@ Native gateway endpoints are independent — this is a downstream issue.
 2. Check `qlogos-api.swiftquantum.tech` health (separate service).
 3. Verify `QLOGOS_BACKEND_URL` env in the task def points at the live
    backend. Severity SEV3 while native endpoints are healthy.
+
+### C2. Execute/QEC returns errors or wrong shape (real-compute regression)
+
+v1.4.0 made execute/QEC **real compute** (numpy statevector + repetition-code
+Monte-Carlo). Symptoms and checks:
+
+1. `success: false` with an error like `Unsupported … gate` or
+   `… capped at 20` → expected behaviour: the statevector engine rejects
+   unsupported gates and circuits over **20 qubits** rather than fabricating
+   output. Not an incident — the client sent an out-of-bounds circuit.
+2. A Bell circuit (`H 0; CX 0,1`) that does **not** return ~50/50 over
+   `{00, 11}`, or returns non-reproducible counts for identical requests →
+   the running image is not the v1.4.0 real-compute build, or numpy is broken.
+   Confirm the deployed task def is `qbridge-gateway:4` (or later) and roll
+   forward.
+3. `/gateway/qec/bb-decoder` is an **analytic estimate** — if a caller expects
+   a full BP-OSD Monte-Carlo, that is a client misexpectation, not a gateway
+   fault. The response `method = analytic_threshold_estimate` + `notes`
+   document this.
 
 ### D. Auth disabled in production (security)
 
@@ -128,7 +153,8 @@ revision (which references a previously-good ECR image tag).
 aws ecs list-task-definitions --family-prefix qbridge-gateway \
   --sort DESC --region ap-northeast-2
 
-# Roll back to the last known-good revision (must be >= the v1.5.1 image)
+# Roll back to the last known-good revision (must still have the /health alias
+# AND be the v1.4.0 real-compute build = task def qbridge-gateway:4 or later)
 aws ecs update-service --cluster swiftquantum-production-cluster \
   --service qbridge-gateway-service \
   --task-definition qbridge-gateway:<good-revision> \
@@ -140,8 +166,9 @@ aws ecs describe-services --cluster swiftquantum-production-cluster \
   --query 'services[0].deployments[].{state:rolloutState,desired:desiredCount,running:runningCount}'
 ```
 
-Do not roll back below the v1.5.1 image — earlier images lack the `/health`
-alias and will drop the health matrix to 8/9.
+Do not roll back to an image that lacks the `/health` alias (drops the health
+matrix to 8/9) or that predates the v1.4.0 real-compute build (task def
+`qbridge-gateway:4`) — older images return mocked execute/QEC output.
 
 ## Kill / disable
 
