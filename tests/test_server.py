@@ -341,7 +341,12 @@ class TestTranspileEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert "transpiled_circuit" in data
-        assert data["transpiled_circuit"] == bell_circuit  # default passthrough
+        # Real transpile pass: equivalent circuit + analysis metadata.
+        tc = data["transpiled_circuit"]
+        assert tc["num_qubits"] == bell_circuit["num_qubits"]
+        assert tc["gates"] == bell_circuit["gates"]
+        assert tc["metadata"]["transpiled"] is True
+        assert "depth" in tc["metadata"]
         assert "backend" in data
         assert "optimization_level" in data
         assert "server" in data

@@ -12,13 +12,143 @@ Includes a LocalSimulator implementation for testing and development.
 import hashlib
 import logging
 import math
-import random
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
+
+# Maximum qubit count for the dense statevector engine. A complex128
+# statevector of n qubits needs 2^n * 16 bytes; 20 qubits ≈ 16 MB.
+MAX_STATEVECTOR_QUBITS = 20
+
+
+def _circuit_seed(circuit: Dict[str, Any], shots: int) -> int:
+    """Derive a deterministic 64-bit RNG seed from the circuit + shots.
+
+    Reproducibility contract: the same circuit and shot count always
+    produce the same measurement sampling. The seed is a stable hash of
+    a canonical JSON encoding, so it does NOT depend on wall-clock time
+    or dict ordering.
+    """
+    import json
+
+    canonical = json.dumps(
+        {"circuit": circuit, "shots": shots},
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    digest = hashlib.sha256(canonical.encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big", signed=False)
+
+
+# ─── Single/Two-qubit gate unitaries (numpy) ───
+
+_INV_SQRT2 = 1.0 / math.sqrt(2.0)
+
+
+def _gate_angle(gate: Dict[str, Any]) -> float:
+    """Extract a rotation angle from a gate dict.
+
+    Accepts `params` (list, OpenQASM/Qiskit style), or scalar `angle` /
+    `theta`. Raises ValueError if a rotation gate carries no angle.
+    """
+    params = gate.get("params")
+    if isinstance(params, (list, tuple)) and params:
+        return float(params[0])
+    for key in ("angle", "theta"):
+        if gate.get(key) is not None:
+            return float(gate[key])
+    raise ValueError(
+        f"Rotation gate '{gate.get('gate')}' requires an angle "
+        f"(provide 'params': [theta] or 'angle')."
+    )
+
+
+def _single_qubit_unitary(name: str, gate: Dict[str, Any]) -> "np.ndarray":
+    """Return the 2x2 unitary for a named single-qubit gate."""
+    if name in ("h",):
+        return np.array([[_INV_SQRT2, _INV_SQRT2],
+                         [_INV_SQRT2, -_INV_SQRT2]], dtype=complex)
+    if name in ("x",):
+        return np.array([[0, 1], [1, 0]], dtype=complex)
+    if name in ("y",):
+        return np.array([[0, -1j], [1j, 0]], dtype=complex)
+    if name in ("z",):
+        return np.array([[1, 0], [0, -1]], dtype=complex)
+    if name in ("s",):
+        return np.array([[1, 0], [0, 1j]], dtype=complex)
+    if name in ("sdg",):
+        return np.array([[1, 0], [0, -1j]], dtype=complex)
+    if name in ("t",):
+        return np.array([[1, 0], [0, np.exp(1j * math.pi / 4)]], dtype=complex)
+    if name in ("tdg",):
+        return np.array([[1, 0], [0, np.exp(-1j * math.pi / 4)]], dtype=complex)
+    if name in ("id", "i"):
+        return np.eye(2, dtype=complex)
+    if name in ("rx",):
+        t = _gate_angle(gate) / 2.0
+        return np.array([[math.cos(t), -1j * math.sin(t)],
+                         [-1j * math.sin(t), math.cos(t)]], dtype=complex)
+    if name in ("ry",):
+        t = _gate_angle(gate) / 2.0
+        return np.array([[math.cos(t), -math.sin(t)],
+                         [math.sin(t), math.cos(t)]], dtype=complex)
+    if name in ("rz",):
+        t = _gate_angle(gate) / 2.0
+        return np.array([[np.exp(-1j * t), 0],
+                         [0, np.exp(1j * t)]], dtype=complex)
+    raise ValueError(f"Unsupported single-qubit gate: {name}")
+
+
+def _apply_single(state: "np.ndarray", u: "np.ndarray",
+                  target: int, num_qubits: int) -> "np.ndarray":
+    """Apply a 2x2 unitary to `target` of an n-qubit statevector.
+
+    Qubit 0 is the least-significant bit of the basis-state index, matching
+    the little-endian bit ordering used when formatting counts.
+    """
+    state = state.reshape([2] * num_qubits)
+    axis = num_qubits - 1 - target  # little-endian: qubit 0 is last axis
+    state = np.tensordot(u, state, axes=([1], [axis]))
+    state = np.moveaxis(state, 0, axis)
+    return state.reshape(-1)
+
+
+def _apply_controlled(state: "np.ndarray", u: "np.ndarray",
+                      control: int, target: int,
+                      num_qubits: int) -> "np.ndarray":
+    """Apply a controlled single-qubit unitary (control=1 branch)."""
+    state = state.reshape([2] * num_qubits)
+    c_axis = num_qubits - 1 - control
+    t_axis = num_qubits - 1 - target
+
+    idx_one = [slice(None)] * num_qubits
+    idx_one[c_axis] = 1
+    sub = state[tuple(idx_one)]  # control==1 subspace, (n-1) dims
+
+    # target axis position within the reduced array
+    red_axis = t_axis - 1 if t_axis > c_axis else t_axis
+    sub = np.tensordot(u, sub, axes=([1], [red_axis]))
+    sub = np.moveaxis(sub, 0, red_axis)
+    state[tuple(idx_one)] = sub
+    return state.reshape(-1)
+
+
+def _apply_swap(state: "np.ndarray", a: int, b: int,
+                num_qubits: int) -> "np.ndarray":
+    """Swap two qubits in the statevector."""
+    if a == b:
+        return state
+    state = state.reshape([2] * num_qubits)
+    ax_a = num_qubits - 1 - a
+    ax_b = num_qubits - 1 - b
+    state = np.swapaxes(state, ax_a, ax_b)
+    return state.reshape(-1)
 
 
 @dataclass
@@ -162,9 +292,9 @@ class LocalSimulator(DeviceInterface):
             technology="simulator",
             connectivity="full",
             supported_gates=[
-                "h", "x", "y", "z", "cx", "cnot", "ccx",
+                "h", "x", "y", "z", "cx", "cnot", "ccx", "toffoli",
                 "rx", "ry", "rz", "s", "sdg", "t", "tdg",
-                "swap", "cz", "id", "measure",
+                "swap", "cz", "id", "i", "measure", "barrier",
             ],
             max_shots=1000000,
             status="online",
@@ -233,78 +363,179 @@ class LocalSimulator(DeviceInterface):
         """Retrieve a completed job result."""
         return self._jobs.get(job_id)
 
+    def _statevector(self, circuit: Dict[str, Any]) -> "np.ndarray":
+        """Build the final complex statevector by applying real gate
+        unitaries to |0...0>.
+
+        Qubit 0 is the least-significant bit of the basis index.
+        Unsupported gates raise ValueError (surfaced by the route).
+        """
+        num_qubits = int(circuit.get("num_qubits", 0))
+        if num_qubits <= 0:
+            # Trivial 0-qubit circuit: single amplitude.
+            return np.array([1.0 + 0j], dtype=complex)
+        if num_qubits > MAX_STATEVECTOR_QUBITS:
+            raise ValueError(
+                f"Circuit requires {num_qubits} qubits; statevector simulator "
+                f"is capped at {MAX_STATEVECTOR_QUBITS} (memory limit)."
+            )
+
+        state = np.zeros(1 << num_qubits, dtype=complex)
+        state[0] = 1.0  # |0...0>
+
+        for gate in circuit.get("gates", []):
+            name = str(gate.get("gate", "")).lower()
+            qubits = gate.get("qubits", [])
+
+            if name in ("measure", "barrier"):
+                # No-op for statevector evolution; sampling handles readout.
+                continue
+
+            if name in ("cx", "cnot"):
+                if len(qubits) < 2:
+                    raise ValueError(f"Gate '{name}' needs 2 qubits, got {qubits}")
+                state = _apply_controlled(
+                    state, _single_qubit_unitary("x", gate),
+                    qubits[0], qubits[1], num_qubits)
+            elif name in ("cz",):
+                if len(qubits) < 2:
+                    raise ValueError(f"Gate '{name}' needs 2 qubits, got {qubits}")
+                state = _apply_controlled(
+                    state, _single_qubit_unitary("z", gate),
+                    qubits[0], qubits[1], num_qubits)
+            elif name in ("swap",):
+                if len(qubits) < 2:
+                    raise ValueError(f"Gate '{name}' needs 2 qubits, got {qubits}")
+                state = _apply_swap(state, qubits[0], qubits[1], num_qubits)
+            elif name in ("ccx", "toffoli"):
+                if len(qubits) < 3:
+                    raise ValueError(f"Gate '{name}' needs 3 qubits, got {qubits}")
+                # Decompose Toffoli into two nested controls via a temp:
+                # apply X on target only when both controls are 1.
+                state = self._apply_toffoli(state, qubits, num_qubits)
+            else:
+                if not qubits:
+                    raise ValueError(f"Gate '{name}' needs a target qubit")
+                u = _single_qubit_unitary(name, gate)
+                state = _apply_single(state, u, qubits[0], num_qubits)
+
+        return state
+
+    def _apply_toffoli(self, state: "np.ndarray", qubits: List[int],
+                       num_qubits: int) -> "np.ndarray":
+        """Apply CCX by operating on the subspace where both controls=1."""
+        c1, c2, t = qubits[0], qubits[1], qubits[2]
+        st = state.reshape([2] * num_qubits)
+        ax_c1 = num_qubits - 1 - c1
+        ax_c2 = num_qubits - 1 - c2
+        ax_t = num_qubits - 1 - t
+        idx = [slice(None)] * num_qubits
+        idx[ax_c1] = 1
+        idx[ax_c2] = 1
+        sub = st[tuple(idx)]
+        # remaining target axis position after fixing two control axes
+        removed = sorted([ax_c1, ax_c2])
+        red_t = ax_t - sum(1 for r in removed if r < ax_t)
+        sub = np.flip(sub, axis=red_t)  # X on target = flip the 0/1 axis
+        st[tuple(idx)] = sub
+        return st.reshape(-1)
+
     def _simulate(self, circuit: Dict[str, Any], shots: int) -> Dict[str, int]:
+        """Real statevector simulation with seeded Born-rule sampling.
+
+        Builds the exact final statevector, computes |amplitude|^2
+        probabilities, and samples `shots` outcomes with a numpy RNG seeded
+        deterministically from a hash of the circuit (reproducible: same
+        circuit + shots -> same counts). Unsupported gates raise.
         """
-        Classical simulation of quantum circuits.
-        Uses pattern detection for common circuit types.
-        """
-        gates = circuit.get("gates", [])
-        num_qubits = circuit.get("num_qubits", 2)
+        num_qubits = int(circuit.get("num_qubits", 0))
+        state = self._statevector(circuit)
+
+        probs = np.abs(state) ** 2
+        total = probs.sum()
+        if total <= 0:
+            raise ValueError("Statevector has zero norm; cannot sample.")
+        probs = probs / total
+
+        rng = np.random.default_rng(_circuit_seed(circuit, shots))
+        num_states = probs.shape[0]
+        samples = rng.choice(num_states, size=int(shots), p=probs)
+        idx, freqs = np.unique(samples, return_counts=True)
+
+        width = max(num_qubits, 1)
         counts: Dict[str, int] = {}
-
-        # Detect circuit patterns
-        has_h = any(g.get("gate", "").lower() == "h" for g in gates)
-        has_cx = any(g.get("gate", "").lower() in ("cx", "cnot") for g in gates)
-        h_qubits = [g.get("qubits", [0])[0] for g in gates if g.get("gate", "").lower() == "h"]
-
-        if has_h and has_cx and num_qubits == 2:
-            # Bell state: |00⟩ + |11⟩
-            noise = random.randint(-shots // 100, shots // 100)
-            c00 = shots // 2 + noise
-            counts["00"] = max(0, c00)
-            counts["11"] = shots - counts["00"]
-
-        elif has_h and has_cx and num_qubits == 3:
-            # GHZ state: |000⟩ + |111⟩
-            noise = random.randint(-shots // 100, shots // 100)
-            c000 = shots // 2 + noise
-            counts["000"] = max(0, c000)
-            counts["111"] = shots - counts["000"]
-
-        elif has_h and len(h_qubits) == num_qubits:
-            # Full superposition: uniform distribution
-            num_states = min(1 << num_qubits, 256)
-            base_count = shots // num_states
-            remaining = shots
-
-            for i in range(num_states - 1):
-                noise = random.randint(-max(1, base_count // 20), max(1, base_count // 20))
-                c = max(0, base_count + noise)
-                state = format(i, f"0{num_qubits}b")
-                counts[state] = c
-                remaining -= c
-
-            last_state = format(num_states - 1, f"0{num_qubits}b")
-            counts[last_state] = max(0, remaining)
-
-        elif has_h:
-            # Partial superposition on H qubits
-            unique_h = set(h_qubits)
-            num_superposed = len(unique_h)
-            num_states = 1 << num_superposed
-            base_count = shots // num_states
-            remaining = shots
-
-            for i in range(num_states - 1):
-                noise = random.randint(-max(1, base_count // 20), max(1, base_count // 20))
-                c = max(0, base_count + noise)
-                state_bits = list("0" * num_qubits)
-                for j, qubit in enumerate(sorted(unique_h)):
-                    if (i >> j) & 1:
-                        state_bits[num_qubits - 1 - qubit] = "1"
-                counts["".join(state_bits)] = c
-                remaining -= c
-
-            # Last state
-            state_bits = list("0" * num_qubits)
-            i = num_states - 1
-            for j, qubit in enumerate(sorted(unique_h)):
-                if (i >> j) & 1:
-                    state_bits[num_qubits - 1 - qubit] = "1"
-            counts["".join(state_bits)] = max(0, remaining)
-
-        else:
-            # No superposition: ground state
-            counts["0" * num_qubits] = shots
-
+        for state_idx, freq in zip(idx.tolist(), freqs.tolist()):
+            bitstring = format(state_idx, f"0{width}b")
+            counts[bitstring] = int(freq)
         return counts
+
+    def transpile(self, circuit: Dict[str, Any],
+                  optimization_level: int = 1) -> Dict[str, Any]:
+        """Real (minimal) transpile pass.
+
+        Performs a genuine pass over the circuit: decomposes a small set of
+        composite gates into the native basis {h,x,y,z,s,t,rx,ry,rz,cx,cz,
+        swap}, then computes real gate-count and depth metrics from the
+        rewritten circuit (not an identity no-op). The returned circuit is
+        functionally equivalent to the input.
+        """
+        gates_in = circuit.get("gates", [])
+        num_qubits = int(circuit.get("num_qubits", 0))
+
+        # Composite-gate decomposition into the native basis.
+        decomposed: List[Dict[str, Any]] = []
+        for gate in gates_in:
+            name = str(gate.get("gate", "")).lower()
+            qubits = list(gate.get("qubits", []))
+            if name in ("cnot",):
+                decomposed.append({"gate": "cx", "qubits": qubits})
+            elif name in ("swap",):
+                # SWAP(a,b) = CX(a,b) CX(b,a) CX(a,b)
+                if len(qubits) >= 2:
+                    a, b = qubits[0], qubits[1]
+                    decomposed.append({"gate": "cx", "qubits": [a, b]})
+                    decomposed.append({"gate": "cx", "qubits": [b, a]})
+                    decomposed.append({"gate": "cx", "qubits": [a, b]})
+                else:
+                    decomposed.append({"gate": "swap", "qubits": qubits})
+            elif name in ("tdg",):
+                decomposed.append({"gate": "rz", "qubits": qubits,
+                                   "params": [-math.pi / 4]})
+            elif name in ("sdg",):
+                decomposed.append({"gate": "rz", "qubits": qubits,
+                                   "params": [-math.pi / 2]})
+            else:
+                decomposed.append(dict(gate))
+
+        # Real depth analysis: greedy layering by qubit occupancy.
+        depth = 0
+        frontier: Dict[int, int] = {}
+        for gate in decomposed:
+            qs = gate.get("qubits", []) or [0]
+            layer = max((frontier.get(q, 0) for q in qs), default=0) + 1
+            for q in qs:
+                frontier[q] = layer
+            depth = max(depth, layer)
+
+        single_q = sum(1 for g in decomposed if len(g.get("qubits", [])) == 1)
+        two_q = sum(1 for g in decomposed if len(g.get("qubits", [])) >= 2)
+
+        transpiled = {
+            "num_qubits": num_qubits,
+            "gates": decomposed,
+            "metadata": {
+                "transpiled": True,
+                "optimization_level": optimization_level,
+                "gate_count": len(decomposed),
+                "single_qubit_gates": single_q,
+                "two_qubit_gates": two_q,
+                "depth": depth,
+                "basis_gates": ["h", "x", "y", "z", "s", "t",
+                                "rx", "ry", "rz", "cx", "cz"],
+            },
+        }
+        # Preserve any extra top-level keys from the input circuit.
+        for key, value in circuit.items():
+            if key not in transpiled:
+                transpiled[key] = value
+        return transpiled

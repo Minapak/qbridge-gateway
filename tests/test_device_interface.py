@@ -284,9 +284,9 @@ class TestLocalSimulatorDeviceInfo:
     def test_device_info_supported_gates(self, local_simulator):
         info = local_simulator.get_device_info()
         expected_gates = {
-            "h", "x", "y", "z", "cx", "cnot", "ccx",
+            "h", "x", "y", "z", "cx", "cnot", "ccx", "toffoli",
             "rx", "ry", "rz", "s", "sdg", "t", "tdg",
-            "swap", "cz", "id", "measure",
+            "swap", "cz", "id", "i", "measure", "barrier",
         }
         assert set(info.supported_gates) == expected_gates
 
@@ -351,7 +351,12 @@ class TestLocalSimulatorExecution:
         assert len(result.counts) == 8
 
     def test_execute_ground_state(self, local_simulator):
-        """No H or CX gates: should produce ground state only."""
+        """No superposition gates: a deterministic basis state.
+
+        Real statevector sim: X flips qubit 0 (little-endian -> bit at the
+        rightmost position), Z is a phase with no measurement effect, so
+        all shots land on the single computational basis state |001>.
+        """
         circuit = {
             "num_qubits": 3,
             "gates": [
@@ -361,8 +366,9 @@ class TestLocalSimulatorExecution:
         }
         result = local_simulator.execute(circuit, shots=100)
         assert result.success is True
-        # No superposition gates -> all |000>
-        assert result.counts.get("000") == 100
+        # Deterministic single-outcome distribution: X on qubit 0 -> "001".
+        assert result.counts.get("001") == 100
+        assert sum(result.counts.values()) == 100
 
     def test_execute_generates_job_id(self, local_simulator, bell_circuit):
         result = local_simulator.execute(bell_circuit, shots=100)
@@ -478,10 +484,19 @@ class TestLocalSimulatorValidation:
 class TestLocalSimulatorTranspile:
 
     def test_transpile_passthrough(self, local_simulator, bell_circuit):
+        # Real transpile pass: preserves num_qubits + gates (Bell needs no
+        # decomposition) and attaches genuine analysis metadata.
         result = local_simulator.transpile(bell_circuit)
-        assert result == bell_circuit
+        assert result["num_qubits"] == bell_circuit["num_qubits"]
+        assert result["gates"] == bell_circuit["gates"]
+        meta = result["metadata"]
+        assert meta["transpiled"] is True
+        assert meta["gate_count"] == len(bell_circuit["gates"])
+        assert meta["two_qubit_gates"] == 1  # the CX
+        assert meta["depth"] >= 2
 
     def test_transpile_optimization_levels(self, local_simulator, bell_circuit):
         for level in [0, 1, 2, 3]:
             result = local_simulator.transpile(bell_circuit, optimization_level=level)
-            assert result == bell_circuit
+            assert result["gates"] == bell_circuit["gates"]
+            assert result["metadata"]["optimization_level"] == level
