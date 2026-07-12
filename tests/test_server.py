@@ -183,7 +183,7 @@ class TestHealthEndpoint:
         assert "protocol_version" in data
         assert "uptime_seconds" in data
         assert "device" in data
-        assert data["version"] == "1.0.0"
+        assert data["version"] == "1.6.0"
         assert data["protocol_version"] == "1.0"
 
     async def test_health_check_uptime_positive(self, test_client):
@@ -829,3 +829,124 @@ class TestMessageEndpoint:
         # health_check handler doesn't explicitly carry correlation_id
         # but the message should still have one
         assert "correlation_id" in data
+
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+#  Production fail-closed auth (empty GATEWAY_API_KEY)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+import gateway_agent.server as _server_mod
+from gateway_agent.server import (
+    _auth_fail_closed,
+    _is_production,
+    _verify_gateway_token,
+)
+
+
+class TestProductionFailClosedHelpers:
+    """v1.6.0 — an empty GATEWAY_API_KEY must never run open in production."""
+
+    def test_dev_empty_key_is_open(self, monkeypatch):
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        monkeypatch.delenv("APP_ENV", raising=False)
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "")
+        assert not _is_production()
+        assert not _auth_fail_closed()
+        assert _verify_gateway_token("anything") is True
+
+    def test_production_empty_key_fails_closed(self, monkeypatch):
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "")
+        assert _is_production()
+        assert _auth_fail_closed()
+        assert _verify_gateway_token("anything") is False
+
+    def test_staging_empty_key_fails_closed(self, monkeypatch):
+        monkeypatch.setenv("ENVIRONMENT", "staging")
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "")
+        assert _auth_fail_closed()
+
+    def test_app_env_alias_recognised(self, monkeypatch):
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        monkeypatch.setenv("APP_ENV", "production")
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "")
+        assert _auth_fail_closed()
+
+    def test_production_with_key_not_fail_closed(self, monkeypatch):
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "prod-key-123")
+        assert not _auth_fail_closed()
+        assert _verify_gateway_token("prod-key-123") is True
+        assert _verify_gateway_token("wrong") is False
+
+
+@pytest.mark.asyncio
+class TestProductionFailClosedEndpoints:
+
+    async def test_production_empty_key_delegated_endpoint_503(
+        self, test_client, bell_circuit, monkeypatch
+    ):
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "")
+        async with test_client as client:
+            resp = await client.post(
+                "/gateway/execute", json={"circuit": bell_circuit, "shots": 128}
+            )
+        assert resp.status_code == 503
+        assert resp.json()["error"] == "auth_not_configured"
+
+    async def test_production_empty_key_health_stays_up(
+        self, test_client, monkeypatch
+    ):
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "")
+        async with test_client as client:
+            resp = await client.get("/gateway/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "healthy"
+
+    async def test_production_with_key_requires_bearer(
+        self, test_client, bell_circuit, monkeypatch
+    ):
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "prod-key-123")
+        async with test_client as client:
+            no_token = await client.post(
+                "/gateway/execute", json={"circuit": bell_circuit, "shots": 128}
+            )
+            bad_token = await client.post(
+                "/gateway/execute",
+                json={"circuit": bell_circuit, "shots": 128},
+                headers={"Authorization": "Bearer wrong"},
+            )
+            good_token = await client.post(
+                "/gateway/execute",
+                json={"circuit": bell_circuit, "shots": 128},
+                headers={"Authorization": "Bearer prod-key-123"},
+            )
+        assert no_token.status_code == 401
+        assert bad_token.status_code == 403
+        assert good_token.status_code == 200
+
+    async def test_dev_empty_key_still_open(
+        self, test_client, bell_circuit, monkeypatch
+    ):
+        monkeypatch.delenv("ENVIRONMENT", raising=False)
+        monkeypatch.delenv("APP_ENV", raising=False)
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "")
+        async with test_client as client:
+            resp = await client.post(
+                "/gateway/execute", json={"circuit": bell_circuit, "shots": 128}
+            )
+        assert resp.status_code == 200
+
+    async def test_health_alias_public_in_production_with_key(
+        self, test_client, monkeypatch
+    ):
+        """/health (ALB parity alias) must stay public when auth is enforced."""
+        monkeypatch.setenv("ENVIRONMENT", "production")
+        monkeypatch.setattr(_server_mod, "_GATEWAY_API_KEY", "prod-key-123")
+        async with test_client as client:
+            resp = await client.get("/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "healthy"

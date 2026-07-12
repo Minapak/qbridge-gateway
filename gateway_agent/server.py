@@ -178,8 +178,31 @@ def _safe_json(resp) -> Any:
 
 # Gateway API key for authentication.
 # Set via GATEWAY_API_KEY env var or config file.
-# When empty, authentication is disabled (development mode).
+# When empty:
+#   - development: authentication is disabled (local dev mode).
+#   - production/staging: FAIL-CLOSED — every non-public (delegated) endpoint
+#     returns 503 auth_not_configured until a key is provisioned. An empty key
+#     must never silently expose compute endpoints on a production host.
 _GATEWAY_API_KEY = os.environ.get("GATEWAY_API_KEY", "")
+
+
+def _environment() -> str:
+    """Deployment environment. Platform convention (swiftquantum_common
+    config_base): ENVIRONMENT ∈ {development, staging, production, test};
+    APP_ENV accepted as a fallback alias."""
+    return (os.environ.get("ENVIRONMENT")
+            or os.environ.get("APP_ENV")
+            or "development").strip().lower()
+
+
+def _is_production() -> bool:
+    """True when running in production or staging (both must fail closed)."""
+    return _environment() in ("production", "staging")
+
+
+def _auth_fail_closed() -> bool:
+    """Empty API key on a production/staging host ⇒ refuse delegated requests."""
+    return _is_production() and not _GATEWAY_API_KEY
 
 
 # ─── Token Verification ───
@@ -187,7 +210,8 @@ _GATEWAY_API_KEY = os.environ.get("GATEWAY_API_KEY", "")
 def _verify_gateway_token(token: str) -> bool:
     """Verify a gateway API key using constant-time comparison."""
     if not _GATEWAY_API_KEY:
-        return True  # Auth disabled in dev mode
+        # Only development may run key-less; production fails closed.
+        return not _is_production()
     return hmac.compare_digest(token, _GATEWAY_API_KEY)
 
 
@@ -226,8 +250,11 @@ if FASTAPI_AVAILABLE:
     class GatewayAuthRateLimitMiddleware(BaseHTTPMiddleware):
         """Combined authentication and rate limiting middleware for the gateway."""
 
-        # Health check is always public
-        PUBLIC_PATHS = {"/gateway/health", "/docs", "/openapi.json"}
+        # Health check is always public. "/health" is the sq-unified-alb
+        # parity alias (v1.5.1) — it must stay public alongside
+        # "/gateway/health" so the 9/9 health matrix and host probes keep
+        # working once auth is enforced.
+        PUBLIC_PATHS = {"/gateway/health", "/health", "/docs", "/openapi.json"}
 
         def __init__(self, app, rate_limiter: _SlidingWindowRateLimiter):
             super().__init__(app)
@@ -239,6 +266,20 @@ if FASTAPI_AVAILABLE:
             # Public endpoints skip auth
             if path in self.PUBLIC_PATHS:
                 return await call_next(request)
+
+            # ── Fail-closed: production with no API key configured ──
+            # Delegated/compute endpoints refuse to serve rather than run
+            # open to the internet. Health (public above) keeps the ALB
+            # target healthy so the misconfiguration is fixable via a task
+            # definition update without a crash loop.
+            if _auth_fail_closed():
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": "auth_not_configured",
+                             "message": "Gateway API key is not configured on a "
+                                        "production host; delegated endpoints are "
+                                        "disabled (fail-closed). Set GATEWAY_API_KEY."},
+                )
 
             # ── Authentication ──
             if _GATEWAY_API_KEY:
@@ -388,7 +429,7 @@ class GatewayServer:
         """Create FastAPI application with all gateway endpoints."""
         app = FastAPI(
             title="Q-Bridge Gateway Agent",
-            version="1.4.0",
+            version="1.6.0",
             description="Researcher-hosted quantum hardware gateway",
         )
 
@@ -425,8 +466,15 @@ class GatewayServer:
             _GATEWAY_API_KEY = self.config.get("server", {}).get("api_key", "")
         if _GATEWAY_API_KEY:
             logger.info("Gateway authentication enabled (API key configured)")
+        elif _is_production():
+            logger.critical(
+                "GATEWAY_API_KEY is EMPTY on a %s host — FAIL-CLOSED: all "
+                "delegated endpoints will return 503 auth_not_configured until "
+                "a key is provisioned (health stays up). Set GATEWAY_API_KEY.",
+                _environment(),
+            )
         else:
-            logger.warning("Gateway authentication DISABLED — set GATEWAY_API_KEY env var for production")
+            logger.warning("Gateway authentication DISABLED (development mode) — set GATEWAY_API_KEY env var for production")
 
         # ─── Endpoints ───
 
@@ -445,7 +493,7 @@ class GatewayServer:
                 "status": "healthy",
                 "server_name": self.server_name,
                 "server_id": self.server_id,
-                "version": "1.4.0",
+                "version": "1.6.0",
                 "protocol_version": "1.0",
                 "uptime_seconds": round(uptime, 2),
                 "device": device_status,
