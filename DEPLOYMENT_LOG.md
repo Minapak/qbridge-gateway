@@ -1,3 +1,11 @@
+## 2026-07-12 — v1.6.0 배포 (ECS `qbridge-gateway:6`) — production fail-closed 인증(휴면) + /health parity alias
+
+- **버전** `1.6.0`, 커밋 `86892c8` (main). 이미지 `swiftquantum/qbridge-gateway:86892c8-arm64-20260712-121236` (linux/arm64).
+- **변경**: ① 빈 `GATEWAY_API_KEY` 시 인증 비활성이 전 환경에 적용되던 것을 수정 — key-less 운영은 `ENVIRONMENT/APP_ENV=development`에서만 허용, production/staging은 fail-closed(위임 엔드포인트 503 `auth_not_configured`). ② `/health`를 `/gateway/health`와 함께 공개 경로에 추가(sq-unified-alb parity, 인증 강제 시에도 헬스 매트릭스 유지). Test 231 passing.
+- **배포**: 직접 AWS(GitHub Actions 미사용). `docker buildx --platform linux/arm64 --push` → ECR → task-def `:5` clone+image-swap → **`:6`** → `update-service qbridge-gateway-service` → `wait services-stable` **OK** (1/1).
+- **검증**: rollout **COMPLETED** · `qbridge-api.swiftquantum.tech/gateway/health` **200** `version:1.6.0` · 신규 `/health` alias **200**.
+- **중요(휴면 상태·사람 조치 필요)**: 라이브 task-def(`:6`)에 `ENVIRONMENT`도 `GATEWAY_API_KEY`도 미설정 → 코드상 dev 판정 → **fail-closed 인증은 아직 비활성(dev-open)**. 실제 활성화하려면 (a) `qbridge-gateway` task-def에 `ENVIRONMENT=production` + `GATEWAY_API_KEY` 시크릿, (b) `swiftquantum-bridge-service` task-def에 동일 `GATEWAY_API_KEY`(registry.py가 Bearer로 전송) 를 함께 설정해야 함. 비파괴 배포(현재는 종전과 동일 동작).
+
 # Gateway Agent 배포 기록 가이드
 
 ## 2026-06-11 — v1.4.0 real-compute deploy (ECS `qbridge-gateway:4`)
