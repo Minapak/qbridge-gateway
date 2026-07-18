@@ -6,7 +6,7 @@ Gateway Agent는 다중 양자 하드웨어 프로바이더를 연결하는 게�
 
 - **Framework**: pytest + pytest-asyncio
 - **Test files**: 6 files in `tests/`
-- **Test count**: **221 tests passing** (v1.4.0). When the mocks were replaced with the real numpy statevector engine + real QEC Monte-Carlo, **5 tests that asserted the old mock behaviour were updated to assert the real behaviour** — the suite still ends at 221 passing.
+- **Test count**: **231 tests passing** (v1.6.0). The v1.4.0 real-compute cut ended at 221 (5 tests that asserted the old mock behaviour were updated to assert the real numpy statevector / QEC Monte-Carlo behaviour); v1.6.0 added the production fail-closed auth + `/health`-in-PUBLIC_PATHS coverage.
 
 ---
 
@@ -128,10 +128,13 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8090/gateway/q
 
 ### GatewayAuthRateLimitMiddleware Verification
 
-> Note: `/gateway/health` (and its `/health` alias), `/docs`, `/openapi.json` are
-> public paths and never require a token. Use a protected endpoint such as
-> `/gateway/backends` to exercise auth. Auth is only enforced when
-> `GATEWAY_API_KEY` is set (empty = dev mode, auth disabled).
+> Note: `/gateway/health`, `/health`, `/docs`, `/openapi.json` are public paths
+> and never require a token. Use a protected endpoint such as
+> `/gateway/backends` to exercise auth. When `GATEWAY_API_KEY` is set, a Bearer
+> token is required; when it is empty, auth is disabled **only** in
+> `development` — on a `production`/`staging` host (`ENVIRONMENT`/`APP_ENV`) an
+> empty key fails closed and delegated endpoints return `503
+> auth_not_configured` (v1.6.0).
 
 ```bash
 # Health is public — always 200, no token needed

@@ -1,3 +1,39 @@
+## v1.6.0 — 2026-07-12 — Production fail-closed auth + `/health` in PUBLIC_PATHS (ECS `qbridge-gateway:6`)
+
+Hardened the empty-`GATEWAY_API_KEY` behaviour so a production host can never
+silently run open, and made the `/health` parity alias public so the health
+matrix survives auth enforcement. Shipped at commit `86892c8`, pyproject
+`1.6.0`, deployed as ECS task def `qbridge-gateway:6` (ARM64).
+
+**What shipped (`gateway_agent/server.py`):**
+
+- **Environment-aware, fail-closed auth.** New `_environment()` /
+  `_is_production()` / `_auth_fail_closed()` helpers read `ENVIRONMENT` (or the
+  `APP_ENV` fallback). A key-less gateway is allowed **only** in `development`;
+  on a `production`/`staging` host with an empty `GATEWAY_API_KEY`, every
+  non-public (delegated) endpoint now returns **`503 auth_not_configured`**
+  rather than serving open. `_verify_gateway_token()` returns `False` for a
+  key-less production/staging host. A `CRITICAL` log line is emitted at startup
+  when a production/staging host boots with no key.
+- **`/health` added to `PUBLIC_PATHS`.** `PUBLIC_PATHS` is now
+  `{/gateway/health, /health, /docs, /openapi.json}` so the sq-unified-alb
+  parity alias `/health` (from v1.5.1) stays reachable once auth is enforced,
+  keeping the 9/9 host health matrix green.
+- **Version bumped to `1.6.0`** in `pyproject.toml`, `gateway_agent/__init__.py`,
+  the FastAPI app `version=`, and the REST `/gateway/health` payload.
+- **Tests: 231 passing.**
+
+Deployment note: the live task def `:6` sets neither `ENVIRONMENT` nor
+`GATEWAY_API_KEY`, so the fail-closed path is **dormant** (the host is judged
+`development` and remains dev-open) until both are provisioned — see
+`DEPLOYMENT_LOG.md`.
+
+Unchanged: the real numpy statevector engine, QEC Monte-Carlo / BB analytic
+compute, rate limiting, CORS, and all endpoint routes (execute, transpile,
+job, providers, qec/*, qlogos proxy, message).
+
+---
+
 ## v1.4.0 — 2026-06-11 — Real numpy statevector sim + real QEC Monte-Carlo + honest BB analytic (ECS `qbridge-gateway:4`)
 
 The gateway stopped faking quantum compute. Every `/gateway/execute` and

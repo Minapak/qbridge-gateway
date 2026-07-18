@@ -137,10 +137,10 @@ session; 0, 1, 6, 7, 9 require user PyPI credentials).
 
 | 항목 | 값 |
 |------|-----|
-| 플랫폼 | AWS ECS Fargate (`swiftquantum-production-cluster`, ap-northeast-2) — 프로덕션 LIVE, v1.4.0 real-compute 빌드는 `qbridge-gateway:4`(2026-06-11). 로컬/Docker 독립 실행도 가능 |
+| 플랫폼 | AWS ECS Fargate (`swiftquantum-production-cluster`, ap-northeast-2) — 프로덕션 LIVE, 현재 v1.6.0 = `qbridge-gateway:6`(2026-07-12); v1.4.0 real-compute 빌드는 `qbridge-gateway:4`(2026-06-11). 로컬/Docker 독립 실행도 가능 |
 | 기본 포트 | 8090 |
 | 프로토콜 | FastAPI REST (`/gateway/*`) + Q-Logos 백엔드 프록시. compute 경로는 real numpy(statevector + QEC Monte-Carlo) |
-| 이미지 | ECR `swiftquantum/qbridge-gateway` (ARM64, 256 CPU / 512 MB, 1 task), task def `qbridge-gateway:4` |
+| 이미지 | ECR `swiftquantum/qbridge-gateway` (ARM64, 256 CPU / 512 MB, 1 task), task def `qbridge-gateway:6` |
 | ALB | `sq-unified-alb` 타깃그룹 `uni-qbridge-gw-tg` (port 8090, healthcheck `/gateway/health`), 리스너 룰 priority 21 → `qbridge-api.swiftquantum.tech` |
 | 패키지 | `pip install -e .` (pyproject.toml 기반) |
 | CI/CD | GitHub Actions (ci.yml: Python 3.10/3.11/3.12 매트릭스) |

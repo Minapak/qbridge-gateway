@@ -155,7 +155,7 @@ ecosystem node #2). See `MONITORING.md` for signals and
 | Region / Account | `ap-northeast-2` / `470485006174` |
 | Cluster | `swiftquantum-production-cluster` |
 | Service | `qbridge-gateway-service` |
-| Task def | `qbridge-gateway:4` (ARM64, 256 CPU / 512 MB, 1 task; v1.4.0 real numpy compute) |
+| Task def | `qbridge-gateway:6` (ARM64, 256 CPU / 512 MB, 1 task; v1.6.0 real numpy compute) |
 | ECR repo | `swiftquantum/qbridge-gateway` |
 | Host | `qbridge-api.swiftquantum.tech` |
 | ALB / TG | `sq-unified-alb` (shared SPOF) / `uni-qbridge-gw-tg` :8090 |
@@ -181,19 +181,24 @@ for the Q-Bridge backend's BB/QEC work (bridge-service reaches it via
 
 ## Versioning note (read before reasoning about "current version")
 
-There is known version drift in this repo:
-- `pyproject.toml` now says **1.4.0** (the real-compute release);
-  `gateway_agent/__init__.py` + FastAPI app version + egg-info still lag at
-  **1.3.0**.
-- `CHANGELOG.md` / `DEPLOYMENT_LOG.md` record the **v1.4.0 real-compute deploy
-  (2026-06-11, ECS `qbridge-gateway:4`)** — this is the **real latest release**
-  and what runs in prod. (Older CHANGELOG entries labelled v1.5.x predate this
-  re-baselining; the deployed task-def revision `:4` is authoritative.)
-- `/gateway/health` returns a hardcoded `"version": "1.0.0"`.
+Current version is **1.6.0** and is consistent across `pyproject.toml`,
+`gateway_agent/__init__.py`, the FastAPI app `version=`, and the REST
+`/gateway/health` payload (`"version": "1.6.0"`). A few stale strings remain:
+- The CLI start banner (`gateway_agent/cli.py`) still prints
+  `Q-Bridge Gateway Agent v1.3.0` — cosmetic only.
+- `qbridge_gateway.egg-info` and the staged `dist/` wheels still say **1.3.0**
+  (build artifacts not re-cut).
+- The `/gateway/message` `HEALTH_CHECK` reply helper
+  (`protocol.py::create_health_response`) returns a hardcoded `"version":
+  "1.0.0"` — this is only on the protocol-message path, not the REST
+  `/gateway/health` endpoint (which returns `1.6.0`).
 
-Trust CHANGELOG/DEPLOYMENT_LOG and the deployed ECR image tag / task-def
-revision (`qbridge-gateway:4`), not the in-code version strings or the health
-payload.
+`CHANGELOG.md` / `DEPLOYMENT_LOG.md` record the **v1.6.0 deploy (2026-07-12,
+ECS `qbridge-gateway:6`, commit `86892c8`)** as the latest release running in
+prod (v1.4.0 real-compute was the earlier `qbridge-gateway:4`, 2026-06-11).
+Trust the REST `/gateway/health` payload, CHANGELOG/DEPLOYMENT_LOG, and the
+deployed task-def revision (`qbridge-gateway:6`) — not the CLI banner, the
+egg-info/dist artifacts, or the protocol-message health helper.
 
 ## Build & push image
 
@@ -254,15 +259,24 @@ execute/QEC output.
 ## Configuration & secrets
 
 - **`GATEWAY_API_KEY`** — Bearer-token auth (constant-time
-  `hmac.compare_digest`). Empty = auth DISABLED (dev mode). **Must be set
-  in production.** Provided via the task def env (or config `server.api_key`).
+  `hmac.compare_digest`). An empty key is permitted only when
+  `ENVIRONMENT`/`APP_ENV` is `development` (auth disabled). On a
+  `production`/`staging` host an empty key **fails closed** — delegated
+  endpoints return `503 auth_not_configured` while health stays public
+  (v1.6.0). **Set `GATEWAY_API_KEY` AND `ENVIRONMENT=production` in prod.**
+  Provided via the task def env (or config `server.api_key`).
+  > Live status (per `DEPLOYMENT_LOG.md`): task def `:6` sets neither
+  > `ENVIRONMENT` nor `GATEWAY_API_KEY`, so the code judges it `development`
+  > and the fail-closed path is **dormant** (currently dev-open). Activating it
+  > requires setting both on the `qbridge-gateway` task def (and the same
+  > `GATEWAY_API_KEY` on `swiftquantum-bridge-service`, which sends it as Bearer).
 - **Rate limiting** — sliding-window, default 60 req/min per client IP.
   Tune via config `server.rate_limit.{max_requests,window_seconds}`.
 - **CORS** — restricted to `swiftquantum.tech` domains + localhost;
   methods GET/POST/OPTIONS only.
-- **Public paths (no auth)** — `/gateway/health`, `/docs`, `/openapi.json`.
-  The `/health` alias is not in `PUBLIC_PATHS` (the ALB HC uses the public
-  `/gateway/health`, so this is fine).
+- **Public paths (no auth)** — `/gateway/health`, `/health`, `/docs`,
+  `/openapi.json`. The `/health` alias was added to `PUBLIC_PATHS` in v1.6.0
+  so the sq-unified-alb health matrix keeps passing once auth is enforced.
 - **`QLOGOS_BACKEND_URL`** — upstream for the `/gateway/qlogos/{path}`
   pass-through proxy.
 
@@ -305,7 +319,7 @@ Monte-Carlo is CPU-bound in `shots × num_cycles`.
   The bundled `venv/` is Python 3.9 with a shebang from another user
   account and may be broken on this machine — recreate if needed:
   `rm -rf venv && /usr/bin/python3 -m venv venv && pip install -e .`
-- **Tests**: `pytest` (221 tests; pytest-asyncio). CI in
+- **Tests**: `pytest` (231 tests; pytest-asyncio). CI in
   `.github/workflows/ci.yml` runs Py 3.10/3.11/3.12 + ruff/black/mypy +
   Docker build check.
 

@@ -10,7 +10,7 @@ production. Pair with `MONITORING.md` (signals) and `OPS.md` (routine ops).
 | Region / Account | `ap-northeast-2` / `470485006174` |
 | Cluster | `swiftquantum-production-cluster` |
 | Service | `qbridge-gateway-service` |
-| Task def | `qbridge-gateway:4` (ARM64, 256 CPU / 512 MB, 1 task; v1.4.0 real numpy compute) |
+| Task def | `qbridge-gateway:6` (ARM64, 256 CPU / 512 MB, 1 task; v1.6.0 real numpy compute) |
 | Host | `qbridge-api.swiftquantum.tech` (ALB `sq-unified-alb`, rule prio 21) |
 | Target group | `uni-qbridge-gw-tg` (port 8090, HC `/gateway/health`) |
 | Log group | `/ecs/qbridge-gateway` |
@@ -115,11 +115,21 @@ Monte-Carlo). Symptoms and checks:
 
 ### D. Auth disabled in production (security)
 
-Log line `Gateway authentication DISABLED — set GATEWAY_API_KEY env var`
-in `/ecs/qbridge-gateway` = the API is open (dev mode). **Treat as SEV2**.
+As of v1.6.0 the empty-key behaviour is environment-aware:
+- Log line `Gateway authentication DISABLED (development mode)` = the host is
+  judged `development` (no `ENVIRONMENT`/`APP_ENV=production|staging` set) and
+  the API is **open**. If this is really a prod host, **treat as SEV2**.
+- Log line `GATEWAY_API_KEY is EMPTY on a production host — FAIL-CLOSED …`
+  (CRITICAL) = the host is correctly judged production/staging and delegated
+  endpoints are already returning `503 auth_not_configured` (health stays up).
 
-- Auth disables only when `GATEWAY_API_KEY` is empty (env or config).
-- Set `GATEWAY_API_KEY` in the task def and redeploy:
+⚠️ Per `DEPLOYMENT_LOG.md` the live task def `:6` sets **neither**
+`ENVIRONMENT` nor `GATEWAY_API_KEY`, so the fail-closed path is **dormant** and
+the gateway is currently dev-open. To actually enforce auth:
+
+- Set **both** `ENVIRONMENT=production` and a `GATEWAY_API_KEY` secret on the
+  `qbridge-gateway` task def (and the same `GATEWAY_API_KEY` on
+  `swiftquantum-bridge-service`, which sends it as Bearer), then redeploy:
   ```bash
   aws ecs update-service --cluster swiftquantum-production-cluster \
     --service qbridge-gateway-service --force-new-deployment \
@@ -127,10 +137,9 @@ in `/ecs/qbridge-gateway` = the API is open (dev mode). **Treat as SEV2**.
   ```
 - Confirm a non-public path returns 401/403 without a token, e.g.
   `curl -i https://qbridge-api.swiftquantum.tech/gateway/backends`.
-- Note: `PUBLIC_PATHS = {/gateway/health, /docs, /openapi.json}`. The
-  `/health` alias is **not** in `PUBLIC_PATHS`, but with a key set it is
-  still reachable only if auth allows — verify it answers for the ALB HC
-  (ALB HC uses `/gateway/health`, which is public, so this is fine).
+- Note: `PUBLIC_PATHS = {/gateway/health, /health, /docs, /openapi.json}` — the
+  `/health` alias is public (added in v1.6.0), so the ALB HC (`/gateway/health`)
+  and the `/health` parity probe both keep answering once auth is enforced.
 
 ### E. Rate-limit storm (429s)
 

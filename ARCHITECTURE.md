@@ -1,6 +1,6 @@
 # Gateway Agent Architecture
 
-**Version:** 1.4.0 (real numpy compute) | **Last Updated:** 2026-06-11
+**Version:** 1.6.0 (real numpy compute; production fail-closed auth) | **Last Updated:** 2026-07-12
 
 ## Overview
 
@@ -129,15 +129,15 @@ Request → GatewayAuthRateLimitMiddleware
            └── CORS: swiftquantum.tech domains (+ localhost) only, GET/POST/OPTIONS
 ```
 
-- **GATEWAY_API_KEY**: Loaded from environment variable or config file; auth disabled (dev mode) when empty
+- **GATEWAY_API_KEY**: Loaded from environment variable or config file. An empty key is permitted only in `development`; on a `production`/`staging` host an empty key **fails closed** — every non-public (delegated) endpoint returns `503 auth_not_configured` while health stays public (v1.6.0). The environment is read from `ENVIRONMENT` (or the `APP_ENV` fallback).
 - **Rate limit**: 60 requests/minute default, configurable per deployment
 - **CORS**: Restricted from `["*"]` to swiftquantum.tech production domains (+ localhost)
 - **Allowed methods**: GET, POST, OPTIONS only (CORS)
-- **PUBLIC_PATHS** (no auth): `/gateway/health`, `/docs`, `/openapi.json` (note: the `/health` alias is not in PUBLIC_PATHS)
+- **PUBLIC_PATHS** (no auth): `/gateway/health`, `/health`, `/docs`, `/openapi.json` (the `/health` alias was added to PUBLIC_PATHS in v1.6.0 so the sq-unified-alb health matrix keeps passing once auth is enforced)
 
 ## Production Deployment (AWS ECS Fargate)
 
-Production runs on AWS ECS Fargate, region ap-northeast-2, account 470485006174. The v1.4.0 real-compute build deployed as task def `qbridge-gateway:4` on 2026-06-11.
+Production runs on AWS ECS Fargate, region ap-northeast-2, account 470485006174. The current release is v1.6.0, deployed as task def `qbridge-gateway:6` on 2026-07-12 (the v1.4.0 real-compute build shipped earlier as `qbridge-gateway:4` on 2026-06-11).
 
 ```
 qbridge-api.swiftquantum.tech ──▶ sq-unified-alb (listener rule priority 21)
@@ -145,7 +145,7 @@ qbridge-api.swiftquantum.tech ──▶ sq-unified-alb (listener rule priority 2
                                        ▼  uni-qbridge-gw-tg (port 8090, hc /gateway/health)
                                   ECS service qbridge-gateway-service
                                   (cluster swiftquantum-production-cluster)
-                                  task def qbridge-gateway:4 · ARM64 256 CPU / 512 MB · 1 task
+                                  task def qbridge-gateway:6 · ARM64 256 CPU / 512 MB · 1 task
                                        │  image: ECR swiftquantum/qbridge-gateway
                                        ▼
                                   CloudWatch /ecs/qbridge-gateway (30d)

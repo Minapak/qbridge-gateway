@@ -17,6 +17,15 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 
 ---
 
+## Recent Session Changes (v1.6.0, 2026-07-12 — production fail-closed auth + `/health` in PUBLIC_PATHS)
+
+- **Fail-closed auth on production/staging.** A key-less gateway is now allowed **only** when `ENVIRONMENT` (or the `APP_ENV` fallback) is `development`. On a `production`/`staging` host with an empty `GATEWAY_API_KEY`, every non-public (delegated) endpoint returns **`503 auth_not_configured`** instead of silently serving open; `/gateway/health` and `/health` stay public so the ALB target stays healthy and the misconfiguration is fixable via a task-def update.
+- **`/health` added to `PUBLIC_PATHS`.** The sq-unified-alb parity alias `/health` is now public alongside `/gateway/health`, so the 9/9 health matrix keeps passing once auth is enforced.
+- **231 tests passing.** Deployed as ECS task def `qbridge-gateway:6` (ARM64) on `qbridge-api.swiftquantum.tech` (commit `86892c8`).
+- Note: on the live task def the fail-closed path is **dormant** until `ENVIRONMENT=production` + a `GATEWAY_API_KEY` secret are set — see `DEPLOYMENT_LOG.md`.
+
+---
+
 ## Recent Session Changes (v1.4.0, 2026-06-11 — real compute)
 
 - **Real numpy statevector simulator** (not a mock). `LocalSimulator` builds the exact complex statevector from real gate unitaries (H/X/Y/Z/S/T/RX/RY/RZ, CX/CZ/SWAP/CCX) and samples Born-rule outcomes with a **seeded** numpy RNG (same circuit + shots → identical counts). Capped at **20 qubits**. Unsupported gates raise an error — no fabricated output. A Bell circuit yields a reproducible ~50/50 over `{00, 11}`.
@@ -282,12 +291,12 @@ qbridge-gateway register --url API_URL [--token TOKEN] [--config PATH]
 
 ## Production Deployment (AWS ECS Fargate)
 
-The gateway runs in production on **AWS ECS Fargate** (LIVE on AWS ECS Fargate; real-compute build deployed 2026-06-11).
+The gateway runs in production on **AWS ECS Fargate** (LIVE; current v1.6.0 build deployed 2026-07-12, real-compute build first shipped 2026-06-11).
 
 - **Region / account**: ap-northeast-2 / 470485006174
 - **Cluster**: `swiftquantum-production-cluster`
 - **ECR repo**: `swiftquantum/qbridge-gateway` (ARM64, 256 CPU / 512 MB, 1 task)
-- **ECS service**: `qbridge-gateway-service` · task def `qbridge-gateway:4` (v1.4.0 real numpy compute)
+- **ECS service**: `qbridge-gateway-service` · task def `qbridge-gateway:6` (v1.6.0; `:4` was the v1.4.0 real-compute build)
 - **ALB**: `sq-unified-alb` → target group `uni-qbridge-gw-tg` (port 8090), healthcheck `/gateway/health`, listener rule priority 21 for host `qbridge-api.swiftquantum.tech` (the `qbridge.swiftquantum.tech` host serves the web app via `uni-bridge-web-tg`)
 - **Logs**: CloudWatch log group `/ecs/qbridge-gateway` (30-day retention)
 - **Env**: `QLOGOS_BACKEND_URL=https://qlogos-api.swiftquantum.tech`
@@ -298,11 +307,12 @@ The gateway runs in production on **AWS ECS Fargate** (LIVE on AWS ECS Fargate; 
 
 MIT License
 
-## Release Distribution (1.4.0)
+## Release Distribution (1.6.0)
 
-Latest released version is **v1.4.0** (2026-06-11, real numpy compute,
-ECS `qbridge-gateway:4`). Build artifacts produced by `python3 -m build` are
-staged on S3 (currently the 1.3.0 packaging artifacts):
+Latest released version is **v1.6.0** (2026-07-12, production fail-closed auth +
+`/health` in PUBLIC_PATHS, ECS `qbridge-gateway:6`). Build artifacts produced by
+`python3 -m build` are staged on S3 (currently still the 1.3.0 packaging
+artifacts — the S3 bundle has not been re-cut for 1.6.0):
 
 - `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0-py3-none-any.whl`
 - `s3://sq-gateway-releases/gateway/qbridge_gateway-1.3.0.tar.gz`
