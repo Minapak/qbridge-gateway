@@ -178,30 +178,42 @@ def _safe_json(resp) -> Any:
 
 # Gateway API key for authentication.
 # Set via GATEWAY_API_KEY env var or config file.
-# When empty:
-#   - development: authentication is disabled (local dev mode).
-#   - production/staging: FAIL-CLOSED — every non-public (delegated) endpoint
-#     returns 503 auth_not_configured until a key is provisioned. An empty key
-#     must never silently expose compute endpoints on a production host.
+# When empty (v1.6.1, 2026-09-23 — fail closed BY DEFAULT):
+#   - ENVIRONMENT (or APP_ENV) explicitly one of development/dev/local/test:
+#     authentication is disabled (local dev mode).
+#   - anything else — production, staging, an unknown value, or UNSET:
+#     FAIL-CLOSED — every non-public (delegated) endpoint returns 503
+#     auth_not_configured until a key is provisioned. Previously an unset
+#     ENVIRONMENT was treated as "development" and ran open.
 _GATEWAY_API_KEY = os.environ.get("GATEWAY_API_KEY", "")
+
+
+# Environments that may run WITHOUT an API key. Must be set explicitly.
+_OPEN_AUTH_ENVIRONMENTS = frozenset({"development", "dev", "local", "test"})
 
 
 def _environment() -> str:
     """Deployment environment. Platform convention (swiftquantum_common
     config_base): ENVIRONMENT ∈ {development, staging, production, test};
-    APP_ENV accepted as a fallback alias."""
+    APP_ENV accepted as a fallback alias. Returns "" when unset."""
     return (os.environ.get("ENVIRONMENT")
             or os.environ.get("APP_ENV")
-            or "development").strip().lower()
+            or "").strip().lower()
+
+
+def _is_dev_environment() -> bool:
+    """True only when the environment is EXPLICITLY a dev/local/test one."""
+    return _environment() in _OPEN_AUTH_ENVIRONMENTS
 
 
 def _is_production() -> bool:
-    """True when running in production or staging (both must fail closed)."""
-    return _environment() in ("production", "staging")
+    """True for every environment that must fail closed without a key —
+    i.e. everything that is not explicitly dev/local/test (including unset)."""
+    return not _is_dev_environment()
 
 
 def _auth_fail_closed() -> bool:
-    """Empty API key on a production/staging host ⇒ refuse delegated requests."""
+    """Empty API key outside an explicit dev environment ⇒ refuse delegated requests."""
     return _is_production() and not _GATEWAY_API_KEY
 
 
@@ -210,8 +222,8 @@ def _auth_fail_closed() -> bool:
 def _verify_gateway_token(token: str) -> bool:
     """Verify a gateway API key using constant-time comparison."""
     if not _GATEWAY_API_KEY:
-        # Only development may run key-less; production fails closed.
-        return not _is_production()
+        # Only an explicit dev/local/test environment may run key-less.
+        return _is_dev_environment()
     return hmac.compare_digest(token, _GATEWAY_API_KEY)
 
 
@@ -429,7 +441,7 @@ class GatewayServer:
         """Create FastAPI application with all gateway endpoints."""
         app = FastAPI(
             title="Q-Bridge Gateway Agent",
-            version="1.6.0",
+            version="1.6.1",
             description="Researcher-hosted quantum hardware gateway",
         )
 
@@ -471,10 +483,10 @@ class GatewayServer:
                 "GATEWAY_API_KEY is EMPTY on a %s host — FAIL-CLOSED: all "
                 "delegated endpoints will return 503 auth_not_configured until "
                 "a key is provisioned (health stays up). Set GATEWAY_API_KEY.",
-                _environment(),
+                _environment() or "<unset ENVIRONMENT>",
             )
         else:
-            logger.warning("Gateway authentication DISABLED (development mode) — set GATEWAY_API_KEY env var for production")
+            logger.warning("Gateway authentication DISABLED (ENVIRONMENT=%s) — set GATEWAY_API_KEY env var for production", _environment())
 
         # ─── Endpoints ───
 
@@ -493,7 +505,7 @@ class GatewayServer:
                 "status": "healthy",
                 "server_name": self.server_name,
                 "server_id": self.server_id,
-                "version": "1.6.0",
+                "version": "1.6.1",
                 "protocol_version": "1.0",
                 "uptime_seconds": round(uptime, 2),
                 "device": device_status,

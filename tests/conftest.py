@@ -14,6 +14,12 @@ from unittest.mock import MagicMock, patch
 # Ensure the project root is on sys.path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+# v1.6.1: gateway auth fails closed unless ENVIRONMENT is EXPLICITLY a
+# dev/local/test value. The suite exercises endpoints without a key, so
+# declare the test environment up front (tests that probe production
+# behaviour override it with monkeypatch).
+os.environ.setdefault("ENVIRONMENT", "test")
+
 from gateway_agent.protocol import GatewayMessage, MessageType
 from gateway_agent.device_interface import (
     DeviceInfo,
