@@ -11,7 +11,7 @@ ecosystem node #2). See `MONITORING.md` for signals and
 | Region / Account | `ap-northeast-2` / `470485006174` |
 | Cluster | `swiftquantum-production-cluster` |
 | Service | `qbridge-gateway-service` |
-| Task def | `qbridge-gateway:6` (ARM64, 256 CPU / 512 MB, 1 task; v1.6.0 real numpy compute) |
+| Task def | `qbridge-gateway:6` (ARM64, 256 CPU / 512 MB; v1.6.0 real numpy compute) — service **desiredCount 0** (stopped, 2026-09-23); code v1.6.1 not deployed |
 | ECR repo | `swiftquantum/qbridge-gateway` |
 | Host | `qbridge-api.swiftquantum.tech` |
 | ALB / TG | `sq-unified-alb` (shared SPOF) / `uni-qbridge-gw-tg` :8090 |
@@ -37,9 +37,9 @@ for the Q-Bridge backend's BB/QEC work (bridge-service reaches it via
 
 ## Versioning note (read before reasoning about "current version")
 
-Current version is **1.6.0** and is consistent across `pyproject.toml`,
+Current code version is **1.6.1** (2026-09-23, not deployed; the stopped service's task def `:6` runs 1.6.0) and is consistent across `pyproject.toml`,
 `gateway_agent/__init__.py`, the FastAPI app `version=`, and the REST
-`/gateway/health` payload (`"version": "1.6.0"`). A few stale strings remain:
+`/gateway/health` payload (`"version": "1.6.1"`). A few stale strings remain:
 - The CLI start banner (`gateway_agent/cli.py`) still prints
   `Q-Bridge Gateway Agent v1.3.0` — cosmetic only.
 - `qbridge_gateway.egg-info` and the staged `dist/` wheels still say **1.3.0**
@@ -116,14 +116,16 @@ execute/QEC output.
 
 - **`GATEWAY_API_KEY`** — Bearer-token auth (constant-time
   `hmac.compare_digest`). An empty key is permitted only when
-  `ENVIRONMENT`/`APP_ENV` is `development` (auth disabled). On a
-  `production`/`staging` host an empty key **fails closed** — delegated
+  `ENVIRONMENT`/`APP_ENV` is explicitly `development`/`dev`/`local`/`test`
+  (v1.6.1, 2026-09-23 — unset now fails closed too). Otherwise an empty key **fails closed** — delegated
   endpoints return `503 auth_not_configured` while health stays public
   (v1.6.0). **Set `GATEWAY_API_KEY` AND `ENVIRONMENT=production` in prod.**
   Provided via the task def env (or config `server.api_key`).
   > Live status (per `DEPLOYMENT_LOG.md`): task def `:6` sets neither
   > `ENVIRONMENT` nor `GATEWAY_API_KEY`, so the code judges it `development`
-  > and the fail-closed path is **dormant** (currently dev-open). Activating it
+  > and the fail-closed path is **dormant** (currently dev-open) — for the
+  > v1.6.0 image. The service is at desiredCount 0 (2026-09-23); v1.6.1 fixes
+  > the unset-environment case in code but is not deployed. Activating it
   > requires setting both on the `qbridge-gateway` task def (and the same
   > `GATEWAY_API_KEY` on `swiftquantum-bridge-service`, which sends it as Bearer).
 - **Rate limiting** — sliding-window, default 60 req/min per client IP.

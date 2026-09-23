@@ -6,7 +6,7 @@
 
 ## Service Information
 
-- **Service**: Q-Bridge Gateway Agent v1.6.0 (real numpy compute; production fail-closed auth, ECS `qbridge-gateway:6`)
+- **Service**: Q-Bridge Gateway Agent v1.6.1 (real numpy compute; auth fail-closed by default — code only; ECS service stopped at desiredCount 0, task def `qbridge-gateway:6` = v1.6.0)
 - **Framework**: FastAPI
 - **Port**: 8090 (default)
 - **Protocol**: SwiftQuantum Gateway Protocol v1.0
@@ -231,7 +231,7 @@ A pass-through proxy that forwards requests to the Q-Logos backend (`QLOGOS_BACK
 
 ## Section 6: Auth & Rate Limiting
 
-All endpoints require Bearer token authentication via the `GatewayAuthRateLimitMiddleware`, except the public paths `/gateway/health`, `/health`, `/docs`, and `/openapi.json`. When `GATEWAY_API_KEY` is empty the gateway runs auth-disabled **only** in `development`; on a `production`/`staging` host an empty key **fails closed** and delegated endpoints return `503 auth_not_configured` (health stays public). (v1.6.0)
+All endpoints require Bearer token authentication via the `GatewayAuthRateLimitMiddleware`, except the public paths `/gateway/health`, `/health`, `/docs`, and `/openapi.json`. When `GATEWAY_API_KEY` is empty the gateway runs auth-disabled **only** when `ENVIRONMENT` is explicitly `development`/`dev`/`local`/`test` (v1.6.1); otherwise — including unset — an empty key **fails closed** and delegated endpoints return `503 auth_not_configured` (health stays public). (v1.6.0)
 
 ### Authentication
 

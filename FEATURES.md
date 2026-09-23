@@ -1,6 +1,6 @@
 # Gateway Agent Features
 
-**Version:** 1.6.0 (real numpy compute; production fail-closed auth) | **Last Updated:** 2026-07-12
+**Version:** 1.6.1 (real numpy compute; auth fail-closed by default — code only, ECS service desired=0) | **Last Updated:** 2026-09-23
 
 ## Core Features
 
@@ -77,12 +77,12 @@ interface; the gateway itself speaks REST.
 - CORS restricted to swiftquantum.tech domains (+ localhost; previously `["*"]`)
 - Allowed methods: GET, POST, OPTIONS only
 - 60 req/min default rate limit, configurable
-- GATEWAY_API_KEY support via env var and config file; empty key allowed only in `development` (auth disabled). On `production`/`staging` an empty key **fails closed** — delegated endpoints return `503 auth_not_configured`, health stays public (v1.6.0)
+- GATEWAY_API_KEY support via env var and config file; empty key allowed only when `ENVIRONMENT` is explicitly `development`/`dev`/`local`/`test` (v1.6.1). Any other value, including unset, **fails closed** — delegated endpoints return `503 auth_not_configured`, health stays public (v1.6.0)
 - hmac.compare_digest constant-time token comparison
 - Public paths (no auth): `/gateway/health`, `/health`, `/docs`, `/openapi.json`
 
 ### Production Deployment (v1.6.0)
-- LIVE on AWS ECS Fargate (ap-northeast-2); current v1.6.0 build deployed 2026-07-12 (real-compute build first shipped 2026-06-11)
+- AWS ECS Fargate service exists (ap-northeast-2) but is **stopped (desiredCount 0)** as of 2026-09-23; its task def `:6` carries the v1.6.0 build deployed 2026-07-12. v1.6.1 is code-only
 - Cluster `swiftquantum-production-cluster`, service `qbridge-gateway-service`, task def `qbridge-gateway:6` (ARM64, 256 CPU / 512 MB)
 - Behind `sq-unified-alb` (target group `uni-qbridge-gw-tg`, port 8090) for host `qbridge-api.swiftquantum.tech`
 - `/health` alias present for the 9/9 sq-unified-alb health matrix

@@ -6,7 +6,7 @@ Gateway Agent는 다중 양자 하드웨어 프로바이더를 연결하는 게�
 
 - **Framework**: pytest + pytest-asyncio
 - **Test files**: 6 files in `tests/`
-- **Test count**: **231 tests passing** (v1.6.0). The v1.4.0 real-compute cut ended at 221 (5 tests that asserted the old mock behaviour were updated to assert the real numpy statevector / QEC Monte-Carlo behaviour); v1.6.0 added the production fail-closed auth + `/health`-in-PUBLIC_PATHS coverage.
+- **Test count**: **242 tests passing** (v1.6.1, 2026-09-23 — +11 for fail-closed-by-default: explicit dev envs open, unset/unknown envs 503; `tests/conftest.py` pins `ENVIRONMENT=test`). Previously 231 (v1.6.0). The v1.4.0 real-compute cut ended at 221 (5 tests that asserted the old mock behaviour were updated to assert the real numpy statevector / QEC Monte-Carlo behaviour); v1.6.0 added the production fail-closed auth + `/health`-in-PUBLIC_PATHS coverage.
 
 ---
 
@@ -131,10 +131,10 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:8090/gateway/q
 > Note: `/gateway/health`, `/health`, `/docs`, `/openapi.json` are public paths
 > and never require a token. Use a protected endpoint such as
 > `/gateway/backends` to exercise auth. When `GATEWAY_API_KEY` is set, a Bearer
-> token is required; when it is empty, auth is disabled **only** in
-> `development` — on a `production`/`staging` host (`ENVIRONMENT`/`APP_ENV`) an
-> empty key fails closed and delegated endpoints return `503
-> auth_not_configured` (v1.6.0).
+> token is required; when it is empty, auth is disabled **only** when
+> `ENVIRONMENT`/`APP_ENV` is explicitly `development`/`dev`/`local`/`test` —
+> anything else, including unset, fails closed and delegated endpoints return
+> `503 auth_not_configured` (v1.6.1). For local runs: `ENVIRONMENT=development qbridge-gateway start`.
 
 ```bash
 # Health is public — always 200, no token needed

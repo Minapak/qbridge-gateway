@@ -10,7 +10,7 @@ production. Pair with `MONITORING.md` (signals) and `OPS.md` (routine ops).
 | Region / Account | `ap-northeast-2` / `470485006174` |
 | Cluster | `swiftquantum-production-cluster` |
 | Service | `qbridge-gateway-service` |
-| Task def | `qbridge-gateway:6` (ARM64, 256 CPU / 512 MB, 1 task; v1.6.0 real numpy compute) |
+| Task def | `qbridge-gateway:6` (ARM64, 256 CPU / 512 MB; v1.6.0 real numpy compute) — service **desiredCount 0** (stopped, 2026-09-23); code v1.6.1 not deployed |
 | Host | `qbridge-api.swiftquantum.tech` (ALB `sq-unified-alb`, rule prio 21) |
 | Target group | `uni-qbridge-gw-tg` (port 8090, HC `/gateway/health`) |
 | Log group | `/ecs/qbridge-gateway` |
@@ -115,17 +115,19 @@ Monte-Carlo). Symptoms and checks:
 
 ### D. Auth disabled in production (security)
 
-As of v1.6.0 the empty-key behaviour is environment-aware:
-- Log line `Gateway authentication DISABLED (development mode)` = the host is
-  judged `development` (no `ENVIRONMENT`/`APP_ENV=production|staging` set) and
-  the API is **open**. If this is really a prod host, **treat as SEV2**.
+As of **v1.6.1 (2026-09-23)** an empty key is open **only** when `ENVIRONMENT`/`APP_ENV`
+is explicitly `development`/`dev`/`local`/`test`; unset or unknown values fail closed.
+(v1.6.0 treated an *unset* environment as development — the case below.)
+- Log line `Gateway authentication DISABLED (ENVIRONMENT=…)` (v1.6.1) / `(development mode)` (v1.6.0)
+  = the API is **open**. If this is really a prod host, **treat as SEV2**.
 - Log line `GATEWAY_API_KEY is EMPTY on a production host — FAIL-CLOSED …`
   (CRITICAL) = the host is correctly judged production/staging and delegated
   endpoints are already returning `503 auth_not_configured` (health stays up).
 
-⚠️ Per `DEPLOYMENT_LOG.md` the live task def `:6` sets **neither**
-`ENVIRONMENT` nor `GATEWAY_API_KEY`, so the fail-closed path is **dormant** and
-the gateway is currently dev-open. To actually enforce auth:
+⚠️ Per `DEPLOYMENT_LOG.md` the task def `:6` (v1.6.0) sets **neither**
+`ENVIRONMENT` nor `GATEWAY_API_KEY`, so with that image the fail-closed path is **dormant**
+(dev-open). The service is stopped (desiredCount 0, checked 2026-09-23). Before scaling it up,
+deploy a ≥ v1.6.1 image. To actually enforce auth:
 
 - Set **both** `ENVIRONMENT=production` and a `GATEWAY_API_KEY` secret on the
   `qbridge-gateway` task def (and the same `GATEWAY_API_KEY` on

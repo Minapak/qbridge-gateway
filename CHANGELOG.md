@@ -1,3 +1,18 @@
+## v1.6.1 — 2026-09-23 — Auth fails closed by default (code only; ECS service stays desired=0)
+
+- **`gateway_agent/server.py`** — `_environment()` returns `""` when neither `ENVIRONMENT` nor
+  `APP_ENV` is set (was `"development"`). New `_is_dev_environment()` is true only for an explicit
+  `development` / `dev` / `local` / `test`; `_is_production()` is now "anything else", so an empty
+  `GATEWAY_API_KEY` fails closed (503 `auth_not_configured`) when the environment is unset or unknown.
+  `_verify_gateway_token()` with an empty key returns true only in an explicit dev environment.
+- **Why:** the live task def `qbridge-gateway:6` sets no `ENVIRONMENT`, so v1.6.0 treated production
+  as development and would have served `/gateway/execute` and `/gateway/qec/*` without auth if the
+  service were scaled up.
+- **Tests:** `tests/conftest.py` pins `ENVIRONMENT=test`; new cases for unset/unknown environments
+  (helpers + a `/gateway/execute` 503 endpoint test with health still 200). **242 passing.**
+- **Version** `1.6.0 → 1.6.1` (`pyproject.toml`, `__init__.py`, FastAPI app, `/gateway/health`).
+- **Deploy:** none. `qbridge-gateway-service` stays at desiredCount 0.
+
 ## v1.6.0 — 2026-07-12 — Production fail-closed auth + `/health` in PUBLIC_PATHS (ECS `qbridge-gateway:6`)
 
 Hardened the empty-`GATEWAY_API_KEY` behaviour so a production host can never

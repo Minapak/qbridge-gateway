@@ -155,7 +155,7 @@ ecosystem node #2). See `MONITORING.md` for signals and
 | Region / Account | `ap-northeast-2` / `470485006174` |
 | Cluster | `swiftquantum-production-cluster` |
 | Service | `qbridge-gateway-service` |
-| Task def | `qbridge-gateway:6` (ARM64, 256 CPU / 512 MB, 1 task; v1.6.0 real numpy compute) |
+| Task def | `qbridge-gateway:6` (ARM64, 256 CPU / 512 MB; v1.6.0 real numpy compute) — service **desiredCount 0** (stopped, 2026-09-23); code v1.6.1 not deployed |
 | ECR repo | `swiftquantum/qbridge-gateway` |
 | Host | `qbridge-api.swiftquantum.tech` |
 | ALB / TG | `sq-unified-alb` (shared SPOF) / `uni-qbridge-gw-tg` :8090 |
@@ -181,9 +181,9 @@ for the Q-Bridge backend's BB/QEC work (bridge-service reaches it via
 
 ## Versioning note (read before reasoning about "current version")
 
-Current version is **1.6.0** and is consistent across `pyproject.toml`,
+Current code version is **1.6.1** (2026-09-23, not deployed; service desiredCount 0, task def `:6` = 1.6.0) and is consistent across `pyproject.toml`,
 `gateway_agent/__init__.py`, the FastAPI app `version=`, and the REST
-`/gateway/health` payload (`"version": "1.6.0"`). A few stale strings remain:
+`/gateway/health` payload (`"version": "1.6.1"`). A few stale strings remain:
 - The CLI start banner (`gateway_agent/cli.py`) still prints
   `Q-Bridge Gateway Agent v1.3.0` — cosmetic only.
 - `qbridge_gateway.egg-info` and the staged `dist/` wheels still say **1.3.0**

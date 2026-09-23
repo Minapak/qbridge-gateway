@@ -1,6 +1,6 @@
 # Gateway Agent Architecture
 
-**Version:** 1.6.0 (real numpy compute; production fail-closed auth) | **Last Updated:** 2026-07-12
+**Version:** 1.6.1 (real numpy compute; auth fail-closed by default — code only, ECS service desired=0) | **Last Updated:** 2026-09-23
 
 ## Overview
 
@@ -129,7 +129,7 @@ Request → GatewayAuthRateLimitMiddleware
            └── CORS: swiftquantum.tech domains (+ localhost) only, GET/POST/OPTIONS
 ```
 
-- **GATEWAY_API_KEY**: Loaded from environment variable or config file. An empty key is permitted only in `development`; on a `production`/`staging` host an empty key **fails closed** — every non-public (delegated) endpoint returns `503 auth_not_configured` while health stays public (v1.6.0). The environment is read from `ENVIRONMENT` (or the `APP_ENV` fallback).
+- **GATEWAY_API_KEY**: Loaded from environment variable or config file. An empty key is permitted only when `ENVIRONMENT`/`APP_ENV` is explicitly `development`/`dev`/`local`/`test` (v1.6.1; before that an *unset* environment counted as development); in every other case — production, staging, unknown or unset — an empty key **fails closed** — every non-public (delegated) endpoint returns `503 auth_not_configured` while health stays public (v1.6.0). The environment is read from `ENVIRONMENT` (or the `APP_ENV` fallback).
 - **Rate limit**: 60 requests/minute default, configurable per deployment
 - **CORS**: Restricted from `["*"]` to swiftquantum.tech production domains (+ localhost)
 - **Allowed methods**: GET, POST, OPTIONS only (CORS)

@@ -17,7 +17,18 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 
 ---
 
-## Recent Session Changes (v1.6.0, 2026-07-12 — production fail-closed auth + `/health` in PUBLIC_PATHS)
+## Recent Session Changes (v1.6.1, 2026-09-23 — auth fail-closed by default, code only)
+
+> **v1.6.1 (2026-09-23, code only — not deployed).** Auth now fails closed **by default**: a key-less
+> gateway serves delegated endpoints only when `ENVIRONMENT`/`APP_ENV` is **explicitly** one of
+> `development`, `dev`, `local`, `test`. Unset or unknown values are treated like production
+> (`503 auth_not_configured`; health stays public). The ECS service `qbridge-gateway-service` is at
+> **desiredCount 0** (stopped) and still points at task def `qbridge-gateway:6` (image v1.6.0, which
+> would run *open* because that task def sets no `ENVIRONMENT`). Do not scale it up before deploying
+> ≥ v1.6.1 with `GATEWAY_API_KEY` set.
+- **242 tests passing** (`pytest`).
+
+## Previous: (v1.6.0, 2026-07-12 — production fail-closed auth + `/health` in PUBLIC_PATHS)
 
 - **Fail-closed auth on production/staging.** A key-less gateway is now allowed **only** when `ENVIRONMENT` (or the `APP_ENV` fallback) is `development`. On a `production`/`staging` host with an empty `GATEWAY_API_KEY`, every non-public (delegated) endpoint returns **`503 auth_not_configured`** instead of silently serving open; `/gateway/health` and `/health` stay public so the ALB target stays healthy and the misconfiguration is fixable via a task-def update.
 - **`/health` added to `PUBLIC_PATHS`.** The sq-unified-alb parity alias `/health` is now public alongside `/gateway/health`, so the 9/9 health matrix keeps passing once auth is enforced.
@@ -34,7 +45,7 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 - **`/gateway/qec/bb-decoder`** is an honest, deterministic **analytic** qLDPC threshold estimate for the 4 BB families — `method = analytic_threshold_estimate`, with a `notes` field stating it is **NOT** a full BP-OSD Monte-Carlo.
 - **numpy>=1.24** added as a hard dependency. **221 tests passing.**
 - Deployed as ECS task def `qbridge-gateway:4` (ARM64) on `qbridge-api.swiftquantum.tech`.
-- **Production LIVE on AWS ECS Fargate** (region ap-northeast-2), behind shared `sq-unified-alb`.
+- **AWS ECS Fargate service (region ap-northeast-2) behind shared `sq-unified-alb` — currently stopped (desiredCount 0, 2026-09-23).**
 - **`/health` alias** present (second decorator on `health_check`) so `qbridge-api` passes the 9/9 sq-unified-alb health matrix.
 - **Q-Logos backend proxy** (`ANY /gateway/qlogos/{path:path}`) pass-through.
 - **GatewayAuthRateLimitMiddleware**: Bearer token auth + sliding-window rate limiter (60 req/min default)
@@ -291,7 +302,7 @@ qbridge-gateway register --url API_URL [--token TOKEN] [--config PATH]
 
 ## Production Deployment (AWS ECS Fargate)
 
-The gateway runs in production on **AWS ECS Fargate** (LIVE; current v1.6.0 build deployed 2026-07-12, real-compute build first shipped 2026-06-11).
+The gateway has an **AWS ECS Fargate** service, currently **stopped (desiredCount 0)**; its task def `qbridge-gateway:6` carries the v1.6.0 build deployed 2026-07-12. v1.6.1 (2026-09-23) is committed but not deployed.
 
 - **Region / account**: ap-northeast-2 / 470485006174
 - **Cluster**: `swiftquantum-production-cluster`

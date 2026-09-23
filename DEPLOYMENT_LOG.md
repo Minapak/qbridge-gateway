@@ -1,3 +1,11 @@
+## 2026-09-23 — v1.6.1 코드 전용 (배포 없음 · 서비스 desired=0 유지)
+
+- **커밋**: v1.6.1 fail-closed 기본값(아래 CHANGELOG). main 푸시만 수행.
+- **배포**: 하지 않음. `qbridge-gateway-service` 는 desiredCount **0** / running 0, 서비스 TD 는 여전히 `qbridge-gateway:6`
+  (이미지 `86892c8-arm64-20260712-121236`, v1.6.0) — 2026-09-23 `aws ecs describe-services` 로 확인.
+- **주의**: `:6` 은 `ENVIRONMENT` 미설정이라 v1.6.0 코드가 dev-open 으로 동작한다. 서비스를 다시 켜려면 먼저 v1.6.1 이미지로
+  새 TD 를 만들고 `GATEWAY_API_KEY` 시크릿(+ 선택적으로 `ENVIRONMENT=production`)을 넣을 것.
+
 ## 2026-07-12 — v1.6.0 배포 (ECS `qbridge-gateway:6`) — production fail-closed 인증(휴면) + /health parity alias
 
 - **버전** `1.6.0`, 커밋 `86892c8` (main). 이미지 `swiftquantum/qbridge-gateway:86892c8-arm64-20260712-121236` (linux/arm64).
@@ -137,7 +145,7 @@ session; 0, 1, 6, 7, 9 require user PyPI credentials).
 
 | 항목 | 값 |
 |------|-----|
-| 플랫폼 | AWS ECS Fargate (`swiftquantum-production-cluster`, ap-northeast-2) — 프로덕션 LIVE, 현재 v1.6.0 = `qbridge-gateway:6`(2026-07-12); v1.4.0 real-compute 빌드는 `qbridge-gateway:4`(2026-06-11). 로컬/Docker 독립 실행도 가능 |
+| 플랫폼 | AWS ECS Fargate (`swiftquantum-production-cluster`, ap-northeast-2) — 서비스 존재하나 **desiredCount 0(정지, 2026-09-23 확인)**, TD `qbridge-gateway:6` = v1.6.0(2026-07-12), 코드 v1.6.1 미배포; v1.4.0 real-compute 빌드는 `qbridge-gateway:4`(2026-06-11). 로컬/Docker 독립 실행도 가능 |
 | 기본 포트 | 8090 |
 | 프로토콜 | FastAPI REST (`/gateway/*`) + Q-Logos 백엔드 프록시. compute 경로는 real numpy(statevector + QEC Monte-Carlo) |
 | 이미지 | ECR `swiftquantum/qbridge-gateway` (ARM64, 256 CPU / 512 MB, 1 task), task def `qbridge-gateway:6` |
