@@ -1,3 +1,17 @@
+## v1.6.3 — 2026-09-25 — ③ claim registry + CI version contract (code only; ECS service still desired=0)
+
+- **`_marketing/claims.yaml`** (9 claims: auth fail-closed, `/health` public, Q-Logos proxy never forwards the
+  gateway key, no PQC, LocalSimulator = seeded numpy statevector sampling, `/qec/simulate` = seeded Monte-Carlo
+  **repetition** code, `/qec/bb-decoder` = analytic threshold estimate (no "verified" LER), version contract,
+  production service dormant) + **`scripts/claims-check`** (no third-party deps; `validated` needs a `test`
+  evidence entry, `pending` needs a `note`). CI step `Claim registry check`.
+- **CI version contract step**: `/health` version == `gateway_agent.__version__` == `pyproject.toml` ==
+  CHANGELOG head. Mirrors bridge-service `ci.yml`.
+- **Tests:** `tests/test_version_contract.py` (3: single-source version, claims-check exit 0, every cited test
+  symbol exists). Version asserts → 1.6.3. **253 passing.**
+- No runtime behaviour change. Deploy prerequisite unchanged: `GATEWAY_API_KEY` + `ENVIRONMENT=production` in
+  the task definition before scaling up.
+
 ## v1.6.2 — 2026-09-25 — Q-Logos proxy credential separation (code only; deploy queued — ECS service still desired=0)
 
 - **`gateway_agent/server.py` `/gateway/qlogos/{path}`** — the inbound `Authorization` header (the

@@ -17,6 +17,17 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 
 ---
 
+## Recent Session Changes (v1.6.3, 2026-09-25 — claim registry + CI version contract, code only)
+
+> **v1.6.3 (2026-09-25, code only — service still desired=0).** Adds `_marketing/claims.yaml` (9 claims with
+> test evidence — what the gateway really computes: seeded numpy statevector sampling, seeded Monte-Carlo
+> *repetition*-code QEC, analytic BB threshold estimate; what it does not do: PQC, forwarding the gateway key,
+> running open without a key) checked by `scripts/claims-check` in CI, plus a CI step asserting `/health`
+> version == `gateway_agent.__version__` == `pyproject.toml` == CHANGELOG head. **253 tests passing.**
+> No runtime change; the v1.6.2 deploy prerequisite (`GATEWAY_API_KEY` + `ENVIRONMENT=production`) stands.
+>
+> Not to be confused with unrelated "Q-BRIDGE" projects elsewhere (see Q-Bridge_Backend README, a717 note).
+
 ## Recent Session Changes (v1.6.2, 2026-09-25 — Q-Logos proxy credential separation, code only)
 
 > **v1.6.2 (2026-09-25, code only — deploy queued, service still desired=0).** `/gateway/qlogos/{path}` no

@@ -1,6 +1,6 @@
 # Gateway Agent Features
 
-**Version:** 1.6.2 (real numpy compute; auth fail-closed by default; Q-Logos proxy credential separation — code only, ECS service desired=0) | **Last Updated:** 2026-09-25
+**Version:** 1.6.3 (real numpy compute; auth fail-closed by default; Q-Logos proxy credential separation; claim registry `_marketing/claims.yaml` + CI version contract — code only, ECS service desired=0) | **Last Updated:** 2026-09-25
 
 ## Core Features
 

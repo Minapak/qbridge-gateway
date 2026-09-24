@@ -35,6 +35,29 @@ jobs:
       - name: Run tests
         run: pytest tests/ -v --tb=short
 
+      # sq-claims: every security / hardware / measurement claim lives in
+      # _marketing/claims.yaml with evidence paths that must exist.
+      - name: Claim registry check (_marketing/claims.yaml)
+        run: python3 scripts/claims-check .
+
+      # /health version contract: gateway_agent.__version__ == pyproject == CHANGELOG head == /health
+      - name: Version contract (/health == __version__ == pyproject == CHANGELOG head)
+        env:
+          ENVIRONMENT: test
+        run: |
+          python - <<'PY'
+          import re
+          from fastapi.testclient import TestClient
+          import gateway_agent
+          from gateway_agent.server import GatewayServer
+          v = gateway_agent.__version__
+          py = re.search(r'^version = "([^"]+)"', open("pyproject.toml").read(), re.M).group(1)
+          log = re.search(r"v(\d+\.\d+\.\d+)", open("CHANGELOG.md", encoding="utf-8").read(400)).group(1)
+          h = TestClient(GatewayServer().app).get("/health").json()
+          print("health", h.get("version"), "__version__", v, "pyproject", py, "changelog", log)
+          assert h.get("version") == v == py == log, "version contract broken"
+          PY
+
   lint:
     name: Code Quality
     runs-on: ubuntu-latest

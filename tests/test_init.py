@@ -12,7 +12,7 @@ class TestModuleExports:
 
     def test_version(self):
         import gateway_agent
-        assert gateway_agent.__version__ == "1.6.2"
+        assert gateway_agent.__version__ == "1.6.3"
 
     def test_author(self):
         import gateway_agent

@@ -1,0 +1,79 @@
+# qbridge-gateway — claim registry (sq-claims)
+# Every statement about hardware, security or measurement that the gateway or
+# its docs make must be listed here with evidence. `scripts/claims-check` runs
+# in CI (.github/workflows/ci.yml).
+# certainty: high|medium|low · assurance: asserted|reviewed|validated|pending
+# evidence.kind: code|test|paper|doi (code/test refs are repo paths, checked)
+version: 1
+updated: 2026-09-25
+claims:
+  - id: auth-fails-closed-without-gateway-key
+    claim: "In any environment that is not explicitly development/dev/local/test, an empty GATEWAY_API_KEY makes every non-public route answer 503 auth_not_configured; the gateway never runs open by accident."
+    certainty: high
+    assurance: validated
+    evidence:
+      - {kind: code, ref: "gateway_agent/server.py::_is_production"}
+      - {kind: test, ref: "tests/test_server.py::TestFailClosedAuth::test_production_empty_key_fails_closed"}
+      - {kind: test, ref: "tests/test_server.py::test_unset_environment_empty_key_fails_closed"}
+  - id: health-is-public-everything-else-needs-bearer
+    claim: "/health and /gateway/health answer without a token; all other routes require the bearer gateway key when one is configured."
+    certainty: high
+    assurance: validated
+    evidence:
+      - {kind: code, ref: "gateway_agent/server.py::PUBLIC_PATHS"}
+      - {kind: test, ref: "tests/test_server.py::test_health_alias_public_in_production_with_key"}
+  - id: qlogos-proxy-never-forwards-gateway-key
+    claim: "The /gateway/qlogos/{path} proxy strips the inbound Authorization (gateway key) and sends upstream only the caller's X-Upstream-Authorization as Authorization; X-PQC-* headers are not relayed."
+    certainty: high
+    assurance: validated
+    evidence:
+      - {kind: code, ref: "gateway_agent/server.py::_qlogos_upstream_headers"}
+      - {kind: test, ref: "tests/test_qlogos_proxy_headers.py::test_gateway_key_never_forwarded_user_jwt_becomes_upstream_auth"}
+      - {kind: test, ref: "tests/test_qlogos_proxy_headers.py::test_dev_mode_inbound_authorization_still_not_forwarded"}
+  - id: no-post-quantum-cryptography
+    claim: "The gateway performs no post-quantum cryptography and relays no PQC headers; transport security is TLS at the load balancer plus the bearer key."
+    certainty: high
+    assurance: validated
+    evidence:
+      - {kind: code, ref: "gateway_agent/server.py::_qlogos_upstream_headers"}
+      - {kind: test, ref: "tests/test_qlogos_proxy_headers.py::test_gateway_key_never_forwarded_user_jwt_becomes_upstream_auth"}
+  - id: local-simulator-is-real-statevector-seeded-sampling
+    claim: "LocalSimulator counts come from a numpy statevector of the submitted circuit sampled with a seed derived from the circuit and shot count (reproducible); results are not fabricated and carry an evidence hash in metadata."
+    certainty: high
+    assurance: validated
+    evidence:
+      - {kind: code, ref: "gateway_agent/device_interface.py::LocalSimulator"}
+      - {kind: test, ref: "tests/test_device_interface.py::test_execute_bell_circuit"}
+      - {kind: test, ref: "tests/test_device_interface.py::test_execute_metadata_has_evidence_hash"}
+  - id: qec-simulate-is-seeded-monte-carlo-repetition-code
+    claim: "/gateway/qec/simulate runs a real seeded Monte-Carlo decoder for a distance-d REPETITION code (method=monte_carlo_repetition_code_seeded); it is not a surface-code or BP-OSD simulation."
+    certainty: high
+    assurance: validated
+    evidence:
+      - {kind: code, ref: "gateway_agent/server.py::_qec_monte_carlo"}
+      - {kind: test, ref: "tests/test_server.py::test_qec_simulate_basic"}
+      - {kind: test, ref: "tests/test_server.py::test_qec_simulate_union_find_decoder"}
+  - id: bb-decoder-is-analytic-threshold-estimate
+    claim: "/gateway/qec/bb-decoder returns a deterministic analytic threshold estimate (method=analytic_threshold_estimate) labelled as such in notes; no BP-OSD Monte-Carlo BB decoding runs and no 'verified' logical error rate is claimed."
+    certainty: high
+    assurance: validated
+    evidence:
+      - {kind: code, ref: "gateway_agent/server.py:910"}
+      - {kind: test, ref: "tests/test_server.py::test_bb_decoder_metrics"}
+      - {kind: test, ref: "tests/test_server.py::test_bb_decoder_all_families"}
+  - id: health-version-contract
+    claim: "/health and /gateway/health report the package version, which equals gateway_agent.__version__ and pyproject.toml; asserted by tests and a CI step."
+    certainty: high
+    assurance: validated
+    evidence:
+      - {kind: code, ref: "gateway_agent/__init__.py"}
+      - {kind: test, ref: "tests/test_server.py::test_health_check_fields"}
+      - {kind: test, ref: "tests/test_version_contract.py"}
+  - id: production-service-dormant
+    claim: "The ECS service qbridge-gateway runs at desired=0 (task def :6 = v1.6.0, no GATEWAY_API_KEY, no ENVIRONMENT); v1.6.1–1.6.3 are code only. Nothing in production currently executes on this gateway."
+    certainty: high
+    assurance: reviewed
+    note: "Operational fact outside the repo; re-check ECS before changing. Owner decision pending: scale up with GATEWAY_API_KEY + ENVIRONMENT=production, or remove gateway delegation from bridge-service."
+    evidence:
+      - {kind: code, ref: "DEPLOYMENT_LOG.md"}
+      - {kind: code, ref: "README.md"}

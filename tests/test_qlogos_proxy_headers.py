@@ -156,6 +156,6 @@ def test_cors_allows_upstream_authorization_header():
     assert "x-upstream-authorization" in allow
 
 
-def test_version_is_1_6_2():
+def test_version_is_1_6_3():
     import gateway_agent
-    assert gateway_agent.__version__ == "1.6.2"
+    assert gateway_agent.__version__ == "1.6.3"

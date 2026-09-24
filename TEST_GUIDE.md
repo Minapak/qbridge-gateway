@@ -5,8 +5,8 @@
 Gateway Agent는 다중 양자 하드웨어 프로바이더를 연결하는 게이트웨이 에이전트입니다. 서버, 프로토콜, 디바이스 인터페이스, CLI를 포괄적으로 테스트합니다.
 
 - **Framework**: pytest + pytest-asyncio
-- **Test files**: 6 files in `tests/`
-- **Test count**: **250 tests passing** (v1.6.2, 2026-09-25 — +8 `tests/test_qlogos_proxy_headers.py`: gateway key never forwarded to Q-Logos, `X-Upstream-Authorization` → upstream `Authorization`, `X-PQC-*` dropped, middleware 401/403 before proxy, CORS). Run: `python3 -m pytest tests -q`. Previously 242 (v1.6.1, 2026-09-23 — +11 for fail-closed-by-default: explicit dev envs open, unset/unknown envs 503; `tests/conftest.py` pins `ENVIRONMENT=test`). Previously 231 (v1.6.0). The v1.4.0 real-compute cut ended at 221 (5 tests that asserted the old mock behaviour were updated to assert the real numpy statevector / QEC Monte-Carlo behaviour); v1.6.0 added the production fail-closed auth + `/health`-in-PUBLIC_PATHS coverage.
+- **Test files**: 7 files in `tests/`
+- **Test count**: **253 tests passing** (v1.6.3, 2026-09-25 — +3 `tests/test_version_contract.py`: `__version__` == pyproject == CHANGELOG head, `scripts/claims-check .` exit 0, every test cited in `_marketing/claims.yaml` exists). Previously 250 (v1.6.2, 2026-09-25 — +8 `tests/test_qlogos_proxy_headers.py`: gateway key never forwarded to Q-Logos, `X-Upstream-Authorization` → upstream `Authorization`, `X-PQC-*` dropped, middleware 401/403 before proxy, CORS). Run: `python3 -m pytest tests -q`. Previously 242 (v1.6.1, 2026-09-23 — +11 for fail-closed-by-default: explicit dev envs open, unset/unknown envs 503; `tests/conftest.py` pins `ENVIRONMENT=test`). Previously 231 (v1.6.0). The v1.4.0 real-compute cut ended at 221 (5 tests that asserted the old mock behaviour were updated to assert the real numpy statevector / QEC Monte-Carlo behaviour); v1.6.0 added the production fail-closed auth + `/health`-in-PUBLIC_PATHS coverage.
 
 ---
 

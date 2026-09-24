@@ -1,0 +1,206 @@
+#!/usr/bin/env python3
+"""claims-check — validate the marketing/product claim registry.
+
+Registry: `_marketing/claims.yaml` (repo root). Every entry must have
+  id          unique, kebab/snake case
+  claim       the user-facing statement
+  certainty   high | medium | low
+  assurance   asserted | reviewed | validated | pending
+  evidence    non-empty list of {kind: code|test|paper|doi, ref}
+              code/test refs are repo paths (optionally `path:line` or
+              `path::symbol`) and must exist.
+
+Rules enforced beyond the schema:
+  * `validated` requires at least one `test` evidence entry.
+  * `pending` claims must carry a `note` explaining what is missing.
+
+No third-party dependency: PyYAML is used when installed, otherwise a
+minimal parser for the restricted block-style subset this file uses.
+Exit code 0 = all claims pass, 1 = failures (listed), 2 = usage/parse error.
+"""
+from __future__ import annotations
+
+import os
+import re
+import sys
+
+CERTAINTY = {"high", "medium", "low"}
+ASSURANCE = {"asserted", "reviewed", "validated", "pending"}
+KINDS = {"code", "test", "paper", "doi"}
+
+
+def _scalar(v: str):
+    v = v.strip()
+    if not v:
+        return ""
+    if (v[0] == v[-1]) and v[0] in "\"'":
+        return v[1:-1]
+    return v
+
+
+def _parse_min_yaml(text: str) -> dict:
+    """Restricted subset: top-level `claims:` list of mappings; each mapping
+    has scalar fields and an `evidence:` list of inline `{k: v, k: v}` or
+    block mappings. Comments (#) and blank lines are ignored."""
+    claims: list[dict] = []
+    cur: dict | None = None
+    ev_cur: dict | None = None
+    in_evidence = False
+    for raw in text.splitlines():
+        line = raw.split(" #", 1)[0].rstrip() if not raw.lstrip().startswith("#") else ""
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip())
+        body = line.strip()
+        if indent == 0:
+            if body.startswith("claims:"):
+                continue
+            key, _, val = body.partition(":")
+            continue  # other top-level scalars (version, updated) are ignored
+        if indent == 2 and body.startswith("- "):
+            cur = {}
+            claims.append(cur)
+            in_evidence = False
+            body = body[2:]
+            indent = 4
+        if cur is None:
+            raise ValueError(f"field outside a claim: {raw!r}")
+        if indent == 4:
+            key, _, val = body.partition(":")
+            key = key.strip()
+            if key == "evidence":
+                cur["evidence"] = []
+                in_evidence = True
+                val = val.strip()
+                if val.startswith("["):
+                    # inline list of inline maps
+                    for m in re.finditer(r"\{([^}]*)\}", val):
+                        d = {}
+                        for kv in m.group(1).split(","):
+                            k, _, v = kv.partition(":")
+                            d[k.strip()] = _scalar(v)
+                        cur["evidence"].append(d)
+                    in_evidence = False
+                continue
+            in_evidence = False
+            cur[key] = _scalar(val)
+            continue
+        if in_evidence and indent >= 6:
+            if body.startswith("- "):
+                item = body[2:].strip()
+                if item.startswith("{"):
+                    d = {}
+                    for kv in item.strip("{}").split(","):
+                        k, _, v = kv.partition(":")
+                        d[k.strip()] = _scalar(v)
+                    cur["evidence"].append(d)
+                    ev_cur = None
+                else:
+                    ev_cur = {}
+                    k, _, v = item.partition(":")
+                    ev_cur[k.strip()] = _scalar(v)
+                    cur["evidence"].append(ev_cur)
+            elif ev_cur is not None:
+                k, _, v = body.partition(":")
+                ev_cur[k.strip()] = _scalar(v)
+            continue
+        raise ValueError(f"unexpected line: {raw!r}")
+    return {"claims": claims}
+
+
+def load(path: str) -> dict:
+    with open(path, encoding="utf-8") as fh:
+        text = fh.read()
+    try:
+        import yaml  # type: ignore
+
+        return yaml.safe_load(text) or {}
+    except ImportError:
+        return _parse_min_yaml(text)
+
+
+def check(root: str, doc: dict) -> list[str]:
+    errors: list[str] = []
+    claims = doc.get("claims")
+    if not isinstance(claims, list) or not claims:
+        return ["claims: must be a non-empty list"]
+    seen: set[str] = set()
+    for i, c in enumerate(claims):
+        tag = f"claims[{i}]"
+        if not isinstance(c, dict):
+            errors.append(f"{tag}: not a mapping")
+            continue
+        cid = str(c.get("id", "")).strip()
+        tag = f"{tag} ({cid or '?'})"
+        if not cid or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", cid):
+            errors.append(f"{tag}: id missing or not kebab/snake case")
+        elif cid in seen:
+            errors.append(f"{tag}: duplicate id")
+        seen.add(cid)
+        if not str(c.get("claim", "")).strip():
+            errors.append(f"{tag}: claim text missing")
+        if str(c.get("certainty", "")) not in CERTAINTY:
+            errors.append(f"{tag}: certainty must be one of {sorted(CERTAINTY)}")
+        assurance = str(c.get("assurance", ""))
+        if assurance not in ASSURANCE:
+            errors.append(f"{tag}: assurance must be one of {sorted(ASSURANCE)}")
+        ev = c.get("evidence")
+        if not isinstance(ev, list) or not ev:
+            errors.append(f"{tag}: evidence must be a non-empty list")
+            ev = []
+        kinds = set()
+        for j, e in enumerate(ev):
+            etag = f"{tag}.evidence[{j}]"
+            if not isinstance(e, dict):
+                errors.append(f"{etag}: not a mapping")
+                continue
+            kind = str(e.get("kind", ""))
+            ref = str(e.get("ref", "")).strip()
+            if kind not in KINDS:
+                errors.append(f"{etag}: kind must be one of {sorted(KINDS)}")
+            if not ref:
+                errors.append(f"{etag}: ref missing")
+                continue
+            kinds.add(kind)
+            if kind in {"code", "test"}:
+                path = re.split(r"::|:(?=\d)", ref, maxsplit=1)[0]
+                if not os.path.exists(os.path.join(root, path)):
+                    errors.append(f"{etag}: {kind} ref path not found: {path}")
+            elif kind == "doi" and not re.match(r"10\.\d{4,9}/\S+", ref):
+                errors.append(f"{etag}: doi ref malformed: {ref}")
+        if assurance == "validated" and "test" not in kinds:
+            errors.append(f"{tag}: assurance=validated requires a test evidence entry")
+        if assurance == "pending" and not str(c.get("note", "")).strip():
+            errors.append(f"{tag}: assurance=pending requires a note")
+    return errors
+
+
+def main(argv: list[str]) -> int:
+    root = os.path.abspath(argv[1]) if len(argv) > 1 else os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    path = os.path.join(root, "_marketing", "claims.yaml")
+    if not os.path.exists(path):
+        print(f"claims-check: registry not found: {path}", file=sys.stderr)
+        return 2
+    try:
+        doc = load(path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"claims-check: parse error: {exc}", file=sys.stderr)
+        return 2
+    errors = check(root, doc)
+    claims = doc.get("claims") or []
+    by = {}
+    for c in claims:
+        if isinstance(c, dict):
+            by[c.get("assurance", "?")] = by.get(c.get("assurance", "?"), 0) + 1
+    summary = ", ".join(f"{k}={v}" for k, v in sorted(by.items()))
+    if errors:
+        print(f"claims-check: FAIL — {len(errors)} problem(s) in {len(claims)} claim(s) [{summary}]")
+        for e in errors:
+            print(f"  - {e}")
+        return 1
+    print(f"claims-check: OK — {len(claims)} claim(s) [{summary}]")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

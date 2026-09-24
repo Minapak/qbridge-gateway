@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qbridge-gateway"
-version = "1.6.2"
+version = "1.6.3"
 description = "Q-Bridge Gateway Agent — Self-hosted quantum hardware gateway for researchers"
 readme = "README.md"
 license = {text = "MIT"}
