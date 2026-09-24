@@ -1,6 +1,6 @@
 # Gateway Agent Features
 
-**Version:** 1.6.1 (real numpy compute; auth fail-closed by default — code only, ECS service desired=0) | **Last Updated:** 2026-09-23
+**Version:** 1.6.2 (real numpy compute; auth fail-closed by default; Q-Logos proxy credential separation — code only, ECS service desired=0) | **Last Updated:** 2026-09-25
 
 ## Core Features
 
@@ -22,7 +22,7 @@
 - REST API over FastAPI
 
 ### Q-Logos Proxy
-- `ANY /gateway/qlogos/{path}` pass-through proxy to the Q-Logos backend
+- `ANY /gateway/qlogos/{path}` pass-through proxy to the Q-Logos backend. v1.6.2: the gateway API key in `Authorization` is never forwarded; the caller's Q-Logos JWT goes in `X-Upstream-Authorization` and is sent upstream as `Authorization`; only `Content-Type`/`Accept-Language` are relayed (no `X-PQC-*`).
 - Forwards GET/POST/PUT/PATCH/DELETE to `QLOGOS_BACKEND_URL` (added v1.4.0)
 
 ### Device Configuration

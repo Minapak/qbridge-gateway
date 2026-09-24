@@ -183,7 +183,7 @@ class TestHealthEndpoint:
         assert "protocol_version" in data
         assert "uptime_seconds" in data
         assert "device" in data
-        assert data["version"] == "1.6.1"
+        assert data["version"] == "1.6.2"
         assert data["protocol_version"] == "1.0"
 
     async def test_health_check_uptime_positive(self, test_client):

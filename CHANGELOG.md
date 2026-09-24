@@ -1,3 +1,23 @@
+## v1.6.2 — 2026-09-25 — Q-Logos proxy credential separation (code only; deploy queued — ECS service still desired=0)
+
+- **`gateway_agent/server.py` `/gateway/qlogos/{path}`** — the inbound `Authorization` header (the
+  gateway API key, checked by the middleware) is **no longer forwarded** to Q-Logos. Before, it was
+  copied verbatim, which (a) leaked `GATEWAY_API_KEY` to the upstream service and (b) made it
+  impossible to carry a user JWT at the same time. The caller's Q-Logos identity now travels in
+  **`X-Upstream-Authorization: Bearer <user JWT>`**, which the proxy sends upstream as `Authorization`
+  (absent → upstream request carries no `Authorization`; Q-Logos answers 401 on gated routes). Only
+  `Content-Type` / `Accept-Language` are relayed otherwise; the cosmetic `X-PQC-Algorithm` /
+  `X-PQC-Standard` headers are no longer relayed. New helper `_qlogos_upstream_headers()` +
+  constant `UPSTREAM_AUTH_HEADER`; CORS `allow_headers` gains `X-Upstream-Authorization`.
+- **Clients:** anything calling the proxy must move the user JWT from `Authorization` to
+  `X-Upstream-Authorization` and put the gateway key in `Authorization` (production requires it since
+  v1.6.1). No known production caller today (service desired=0).
+- **Deploy prerequisite (unchanged from v1.6.1):** set `GATEWAY_API_KEY` **and** `ENVIRONMENT=production`
+  in the task definition before scaling the service up; the live task def `qbridge-gateway:6` has neither.
+- **Tests:** `tests/test_qlogos_proxy_headers.py` (8: helper drop/promote, end-to-end gateway key never
+  upstream + JWT promoted + X-PQC dropped, no upstream header → no Authorization, middleware 401/403 before
+  proxy, dev mode still not relayed, CORS header, version). Version asserts → 1.6.2. **250 passing.**
+
 ## v1.6.1 — 2026-09-23 — Auth fails closed by default (code only; ECS service stays desired=0)
 
 - **`gateway_agent/server.py`** — `_environment()` returns `""` when neither `ENVIRONMENT` nor

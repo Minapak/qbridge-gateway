@@ -17,6 +17,15 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 
 ---
 
+## Recent Session Changes (v1.6.2, 2026-09-25 — Q-Logos proxy credential separation, code only)
+
+> **v1.6.2 (2026-09-25, code only — deploy queued, service still desired=0).** `/gateway/qlogos/{path}` no
+> longer forwards the inbound `Authorization` (gateway API key) to Q-Logos. Send the user's JWT in
+> **`X-Upstream-Authorization: Bearer <jwt>`**; the proxy relays it upstream as `Authorization`.
+> `X-PQC-*` headers are not relayed. Before re-starting the ECS service the task definition must set
+> **`GATEWAY_API_KEY` and `ENVIRONMENT=production`**.
+- **250 tests passing** (`pytest`).
+
 ## Recent Session Changes (v1.6.1, 2026-09-23 — auth fail-closed by default, code only)
 
 > **v1.6.1 (2026-09-23, code only — not deployed).** Auth now fails closed **by default**: a key-less
@@ -47,7 +56,7 @@ The Gateway Agent bridges researcher-owned quantum devices with the SwiftQuantum
 - Deployed as ECS task def `qbridge-gateway:4` (ARM64) on `qbridge-api.swiftquantum.tech`.
 - **AWS ECS Fargate service (region ap-northeast-2) behind shared `sq-unified-alb` — currently stopped (desiredCount 0, 2026-09-23).**
 - **`/health` alias** present (second decorator on `health_check`) so `qbridge-api` passes the 9/9 sq-unified-alb health matrix.
-- **Q-Logos backend proxy** (`ANY /gateway/qlogos/{path:path}`) pass-through.
+- **Q-Logos backend proxy** (`ANY /gateway/qlogos/{path:path}`) pass-through. v1.6.2: `Authorization` = gateway key (never forwarded); user JWT in `X-Upstream-Authorization` → upstream `Authorization`.
 - **GatewayAuthRateLimitMiddleware**: Bearer token auth + sliding-window rate limiter (60 req/min default)
 - **CORS restricted**: `["*"]` → swiftquantum.tech domains (+ localhost) only
 - **allow_methods**: GET/POST/OPTIONS only

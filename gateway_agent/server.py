@@ -227,6 +227,32 @@ def _verify_gateway_token(token: str) -> bool:
     return hmac.compare_digest(token, _GATEWAY_API_KEY)
 
 
+# ─── Q-Logos proxy header separation (v1.6.2) ───
+
+# Client → gateway: the caller's Q-Logos identity travels in this header so it
+# can never be confused with the gateway API key in ``Authorization``.
+UPSTREAM_AUTH_HEADER = "x-upstream-authorization"
+# Non-credential headers relayed to Q-Logos verbatim.
+_QLOGOS_RELAY_HEADERS = ("content-type", "accept-language")
+
+
+def _qlogos_upstream_headers(headers) -> Dict[str, str]:
+    """Build the header set sent to Q-Logos from an inbound request.
+
+    The inbound ``Authorization`` (gateway API key) is dropped; the value of
+    ``X-Upstream-Authorization`` becomes the upstream ``Authorization``.
+    Anything else (including ``X-PQC-*``) is not forwarded.
+    """
+    out: Dict[str, str] = {}
+    for key in _QLOGOS_RELAY_HEADERS:
+        if key in headers:
+            out[key] = headers[key]
+    upstream_auth = headers.get(UPSTREAM_AUTH_HEADER, "")
+    if upstream_auth:
+        out["authorization"] = upstream_auth
+    return out
+
+
 # ─── In-Memory Sliding Window Rate Limiter ───
 
 class _SlidingWindowRateLimiter:
@@ -441,7 +467,7 @@ class GatewayServer:
         """Create FastAPI application with all gateway endpoints."""
         app = FastAPI(
             title="Q-Bridge Gateway Agent",
-            version="1.6.1",
+            version="1.6.2",
             description="Researcher-hosted quantum hardware gateway",
         )
 
@@ -461,7 +487,7 @@ class GatewayServer:
             allow_origins=cors_origins,
             allow_credentials=True,
             allow_methods=["GET", "POST", "OPTIONS"],
-            allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
+            allow_headers=["Authorization", "X-Upstream-Authorization", "Content-Type", "Accept", "X-Request-ID"],
         )
 
         # Auth + Rate Limiting
@@ -505,7 +531,7 @@ class GatewayServer:
                 "status": "healthy",
                 "server_name": self.server_name,
                 "server_id": self.server_id,
-                "version": "1.6.1",
+                "version": "1.6.2",
                 "protocol_version": "1.0",
                 "uptime_seconds": round(uptime, 2),
                 "device": device_status,
@@ -930,11 +956,25 @@ class GatewayServer:
             methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         )
         async def qlogos_proxy(path: str, request: Request):
-            """Pass-through proxy to Q-Logos_Backend with tier-aware auth.
+            """Pass-through proxy to Q-Logos_Backend with SEPARATED credentials.
 
-            Path is appended to QLOGOS_BACKEND_URL/v1/. Forwards the
-            original Authorization header so JWT-based tier checks at the
-            destination still work. Streams the body as-is (bytes).
+            Path is appended to QLOGOS_BACKEND_URL/v1/. Body is streamed as-is
+            (bytes).
+
+            Header contract (v1.6.2, 2026-09-25):
+              * ``Authorization: Bearer <GATEWAY_API_KEY>`` authenticates the
+                caller to THIS gateway (middleware). It is **never** forwarded
+                upstream — before v1.6.2 it was copied verbatim, which leaked
+                the gateway key to Q-Logos and made it impossible to carry a
+                user JWT at the same time.
+              * ``X-Upstream-Authorization: Bearer <user JWT>`` is the
+                identity for Q-Logos. It is forwarded upstream as
+                ``Authorization`` so JWT/tier checks at the destination work.
+                Absent → the upstream request carries no Authorization (Q-Logos
+                answers 401 on gated routes).
+              * Only ``Content-Type`` / ``Accept-Language`` are forwarded
+                otherwise. The cosmetic ``X-PQC-*`` headers are no longer
+                relayed.
             """
             try:
                 import httpx  # type: ignore
@@ -944,10 +984,7 @@ class GatewayServer:
                     detail="qlogos proxy unavailable: httpx not installed",
                 )
 
-            forwarded_headers = {}
-            for key in ("authorization", "content-type", "accept-language", "x-pqc-algorithm", "x-pqc-standard"):
-                if key in request.headers:
-                    forwarded_headers[key] = request.headers[key]
+            forwarded_headers = _qlogos_upstream_headers(request.headers)
 
             target = f"{_QLOGOS_BASE.rstrip('/')}/v1/{path.lstrip('/')}"
             params = dict(request.query_params)
